@@ -1,5 +1,13 @@
 allowBuilds:
   esbuild: true
+# 与工作区 deepseek-harness 同版本(0.1.2-alpha.1,尚未发布到 npm):
+# 本地安装把这两个依赖重定向到工作区源码目录(link: 符号链接,依赖从工作区
+# 包自身的 node_modules 解析,避免 file: 拉入 workspace: 协议的传递依赖)。
+overrides:
+  '@deepseek-ai/dsh-credentials': 'link:../deepseek-harness/packages/credentials/credentials'
+  '@deepseek-ai/dsh-home-paths': 'link:../deepseek-harness/packages/util/home-paths'
+  '@deepseek-ai/dsh-brand': 'link:../deepseek-harness/packages/util/brand'
+  '@deepseek-ai/dsh-invariants': 'link:../deepseek-harness/packages/runtime-diagnostics/invariants'
 # minimumReleaseAgeExclude only applies where this file is read, i.e. dev/CI
 # installs inside THIS repo (an end-user `dsh plugin add` verifies against the
 # PROFILE directory's workspace config). Production deps are exact-pinned in
@@ -8,9 +16,11 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@deepseek-ai/cordis@4.0.1'
   - '@deepseek-ai/cosmokit@1.8.2'
-  - '@deepseek-ai/dsh-home-paths@0.1.0-rc.6'
+  # 与工作区 deepseek-harness 同版本(0.1.2-alpha.1,尚未发布到 npm):
+  # 本地安装经 package.json 的 pnpm.overrides 指向工作区源码目录(file: 链接)。
+  - '@deepseek-ai/dsh-home-paths@0.1.2-alpha.1'
   - '@deepseek-ai/dsh-invariants@0.1.0-rc.6'
   - '@deepseek-ai/schemastery@3.18.1'
   - '@deepseek-ai/dsh-brand@0.1.0-rc.6'
-  - '@deepseek-ai/dsh-credentials@0.1.0-rc.6'
+  - '@deepseek-ai/dsh-credentials@0.1.2-alpha.1'
   - 'esbuild@0.28.1'

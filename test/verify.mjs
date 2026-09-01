@@ -29,6 +29,8 @@ import {
   LEGACY_BASE_PRICES,
   LEGACY_BASE_PRICES_CNY,
   usdFromCost,
+  resolveCurrency,
+  rmbFromCost,
   providerPriceEntryFor,
   isWrapperProviderId,
   wrapperUpstreamProvider,
@@ -2846,6 +2848,39 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
   const indexSrcRecon = readFileSync(join(import.meta.dirname, '..', 'lib', 'index.js'), 'utf8')
   assert.ok(indexSrcRecon.includes('exchangeRate: ledger.config.exchangeRate'), '对账调用传入汇率做折算')
   assert.ok(indexSrcRecon.includes('spentCurrency'), '提示按余额真实币种取符号')
+  // issue #78 统一人民币展示:本地账本今日费用不再恒为 $ 口径,CNY 账号按对账
+  // 同一汇率折算为 ¥ 展示(与余额当日变动同币种直接可比)。
+  assert.ok(indexSrcRecon.includes("const localCost = event =>"), '对账文案按余额币种格式化本地费用')
+  assert.ok(indexSrcRecon.includes("cost: localCost(event)"), 'drift 文案使用余额币种本地费用')
+  assert.ok(indexSrcRecon.includes("'¥' + Number(event.todayCost * rate).toFixed(4)"), 'CNY 账号本地费用按汇率折算 ¥(不再恒 $)')
+  // issue #78 统一 sqlite 取数:对账本地今日费用改从调用明细库取(官方渠道,人民币 → 汇率折回美元)。
+  assert.ok(indexSrcRecon.includes('reconcileTodayCost(callsDb, ledger, nowMs)'), '对账本地费用从 sqlite 调用明细取')
+  assert.ok(indexSrcRecon.includes('officialChannelCostRmb(localDayKey(nowMs))'), '对账本地费用为官方渠道人民币口径')
+  // officialChannelCostRmb:实时行按 provider 判定,迁移行按 meta 键判定,残余行不计。
+  {
+    const { CallsDb } = await import('../lib/calls-db.js')
+    const dbO = CallsDb.open(':memory:')
+    try {
+      dbO.record({ sessionId: 's1', provider: 'deepseek-official', model: 'deepseek-v4-flash', atMs: Date.parse('2026-08-21T09:00:00'), buckets: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, costRmb: 3.6, apiCostRmb: 3.6 })
+      dbO.record({ sessionId: 's2', provider: 'llm-deepseek', model: 'deepseek-v4-pro', atMs: Date.parse('2026-08-21T10:00:00'), buckets: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, costRmb: 7.2, apiCostRmb: 7.2 })
+      dbO.record({ sessionId: 's3', provider: 'openai', model: 'gpt-x', atMs: Date.parse('2026-08-21T11:00:00'), buckets: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, costRmb: 14.4, apiCostRmb: 14.4 })
+      dbO.importLedgerDayMissing({
+        date: '2026-08-21', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 0, cost: 0, apiCost: 0, byProviderModel: {},
+        sessions: [{
+          id: 's-old', title: '', at: Date.parse('2026-08-21T08:00:00'), input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 1, cost: 0.5, apiCost: 0.5,
+          byProviderModel: { 'deepseek:deepseek-v4-flash': { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 1, cost: 0.5, apiCost: 0.5 }, 'opencode-go:gpt-5.6': { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 1, cost: 1.0, apiCost: 1.0 } },
+        }],
+      }, 7.2)
+      const rmb = dbO.officialChannelCostRmb('2026-08-21')
+      // 实时:3.6 + 7.2(llm- 前缀同义);迁移 meta:0.5×7.2;openai/opencode-go 不计。
+      assert.ok(Math.abs(rmb - (3.6 + 7.2 + 0.5 * 7.2)) < 1e-9, `officialChannelCostRmb 只计官方渠道:${rmb}`)
+      // 对账折算:reconcileTodayCost 语义 = rmb/汇率。
+      const todayUsd = rmb / 7.2
+      assert.ok(Math.abs(todayUsd - (3.6 + 7.2 + 0.5 * 7.2) / 7.2) < 1e-9, '对账本地费用折回美元基准')
+    } finally {
+      dbO.close()
+    }
+  }
   // 旧参考点无币种标记(升级前账本):重置一次基准。
   const legacyBase = { date: day, total: 10, granted: 1, topped: 9, at: t0 }
   r = reconcileBalanceDelta(legacyBase, { ...bal(9), currency: 'CNY' }, 0.95, day, t1)
@@ -2915,7 +2950,8 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
   assert.equal(ledger36c.todayOfficialCost(), 0, '无今日记录返回 0')
   // 源结构断言:index.js 对账改用官方渠道费用;client.js 官方分支走 todayOfficialUsd,自定义分支维持全量。
   const idxSrc36 = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
-  assert.ok(idxSrc36.includes('reconcileBalanceDelta(ledger.balanceRef, balanceCache.value, ledger.todayOfficialCost()'), '对账传入官方渠道费用(issue #36)')
+  assert.ok(idxSrc36.includes('reconcileBalanceDelta(ledger.balanceRef, balanceCache.value, reconcileTodayCost(callsDb, ledger, nowMs)'), '对账传入官方渠道费用(issue #36;issue #78 起从 sqlite 调用明细取官方渠道成本)')
+  assert.ok(idxSrc36.includes('officialChannelCostRmb'), 'sqlite 侧官方渠道成本判定存在')
   assert.ok(!idxSrc36.includes('ledger.today().cost, localDayKey'), '对账不再使用全渠道今日合计')
   const cliSrc36 = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.ok(cliSrc36.includes('function todayOfficialUsd(state)'), 'client.js 定义 todayOfficialUsd')
@@ -4267,10 +4303,14 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
     .filter(([, spec]) => !/^[0-9A-Za-z]/.test(String(spec)) || /^[\^~><=]/.test(String(spec)))
   assert.deepEqual(offenders, [], `生产依赖必须精确锁版(不得使用 ^~/区间),违规:${offenders.map(([n, s]) => `${n}@${s}`).join(', ')}`)
   assert.equal(pkg.dependencies.zod, '4.4.3', 'zod 锁定 4.4.3')
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.0-rc.6', 'dsh-credentials 锁定 0.1.0-rc.6')
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.0-rc.6', 'dsh-home-paths 锁定 0.1.0-rc.6')
+  // 与工作区 deepseek-harness 同版本(0.1.2-alpha.1;尚未发布到 npm,本地安装
+  // 经 pnpm-workspace.yaml 的 overrides 重定向到工作区源码目录)。
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.2-alpha.1', 'dsh-credentials 锁定工作区版本 0.1.2-alpha.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.2-alpha.1', 'dsh-home-paths 锁定工作区版本 0.1.2-alpha.1')
   const wsYaml = readFileSync(join(import.meta.dirname, '..', 'pnpm-workspace.yaml'), 'utf8')
   assert.ok(wsYaml.includes("esbuild@0.28.1"), 'workspace 排除表包含 esbuild(本仓开发安装受年龄策略时放行)')
+  assert.ok(wsYaml.includes('link:../deepseek-harness/packages/credentials/credentials'), 'workspace overrides 把 dsh-credentials 重定向到工作区源码')
+  assert.ok(wsYaml.includes('link:../deepseek-harness/packages/util/home-paths'), 'workspace overrides 把 dsh-home-paths 重定向到工作区源码')
   console.log('[ok] 生产依赖精确锁版门禁(#72 防回归)通过')
 }
 
@@ -5099,6 +5139,260 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
   }
   rmSync(projRoot12b, { recursive: true, force: true })
   console.log('[ok] 历史回放计入 compaction/summary + 折叠/回放逐位一致通过')
+}
+
+// ===== v1.7.0 供应商模型币种配置(issue #78):resolveCurrency 优先级 + rmbFromCost =====
+{
+  // 优先级:条目显式 > deepseek-peak 上下文(prices.currency)> 供应商表级 > USD。
+  const prices = sanitizeConfig({}).prices
+  assert.equal(resolveCurrency({ currency: 'CNY' }, 'flat', prices, 'openai'), 'CNY', '条目显式 CNY 优先')
+  assert.equal(resolveCurrency({ currency: 'USD' }, 'deepseek-peak', { ...prices, currency: 'CNY' }, 'deepseek'), 'USD', '条目显式 USD 压过峰谷上下文 CNY')
+  assert.equal(resolveCurrency(null, 'deepseek-peak', { currency: 'CNY' }, 'deepseek'), 'CNY', '峰谷上下文跟随 prices.currency')
+  assert.equal(resolveCurrency(null, 'flat', { providers: { openai: { currency: 'CNY' } } }, 'openai'), 'CNY', '供应商表级币种生效')
+  assert.equal(resolveCurrency(null, 'flat', { providers: { openai: { currency: 'CNY' } } }, 'anthropic'), 'USD', '未配置供应商回落 USD')
+  assert.equal(resolveCurrency(null, 'flat', { providers: { openai: { models: {} } } }, 'openai'), 'USD', '表级无 currency 回落 USD')
+  // rmbFromCost:CNY 原值,USD × 汇率;非法汇率按 1 兜底。
+  assert.ok(Math.abs(rmbFromCost(2, 'CNY', 7.2) - 2) < 1e-9, 'CNY 成本原值入账')
+  assert.ok(Math.abs(rmbFromCost(2, 'USD', 7.2) - 14.4) < 1e-9, 'USD 成本按汇率折算人民币')
+  assert.ok(Math.abs(rmbFromCost(2, 'USD', 0) - 2) < 1e-9, '非法汇率按 1 兜底')
+  assert.equal(rmbFromCost(-1, 'USD', 7.2), 0, '负成本钳 0')
+  // normalizePrice 保留合法币种、剥离非法值。
+  assert.equal(normalizePrice({ input: 1, output: 2, currency: 'CNY' }).currency, 'CNY', '条目级币种被保留')
+  assert.equal(normalizePrice({ input: 1, output: 2, currency: 'EUR' }).currency, undefined, '非法币种被剥离')
+  assert.equal(normalizePrice({ unpriced: true, currency: 'CNY' }).currency, 'CNY', 'unpriced 条目币种保留')
+  // 供应商表级币种 + 模型级币种经补丁/清洗链:合法通过,非法拒绝/收敛。
+  const patchCur = applyConfigPatch(sanitizeConfig({}), { prices: { providers: { openai: { currency: 'CNY', models: { 'gpt-x': { input: 1, output: 2, currency: 'USD' } } } } } })
+  assert.equal(patchCur.errors.length, 0, '供应商表级 + 模型级币种合法补丁通过')
+  assert.equal(patchCur.config.prices.providers.openai.currency, 'CNY', '表级币种落盘')
+  assert.equal(patchCur.config.prices.providers.openai.models['gpt-x'].currency, 'USD', '模型级币种落盘')
+  const patchCurBad = applyConfigPatch(sanitizeConfig({}), { prices: { providers: { openai: { currency: 'EUR', models: { 'gpt-x': { input: 1, output: 2 } } } } } })
+  assert.ok(patchCurBad.errors.length > 0, '供应商表级非法币种被拒')
+  const cleanedCur = sanitizeConfig({ prices: { providers: { openai: { currency: 'EUR', models: { 'gpt-x': { input: 1, output: 2, currency: 'bad' } } } } } })
+  assert.equal(cleanedCur.prices.providers.openai.currency, 'USD', '清洗链把非法表级币种收敛 USD')
+  assert.equal(cleanedCur.prices.providers.openai.models['gpt-x'].currency, undefined, '清洗链剥离非法模型级币种')
+  // 生效币种接线:CNY 价目下 deepseek-peak 成本折算人民币入账,第三方显式 CNY 条目同样入账。
+  const cfg78 = sanitizeConfig({})
+  cfg78.prices.currency = 'CNY'
+  cfg78.prices.providers.openai.models['gpt-x'] = { input: 1, output: 2, currency: 'CNY' }
+  const l78 = new Ledger(cfg78, {}, join(tmpdir(), `cm-currency-${Date.now()}`, 'ledger.json'))
+  const rec78 = l78.account({ input: 1_000_000, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, 'gpt-x', 's78', Date.now(), 'openai')
+  assert.equal(rec78.currency, 'CNY', 'account 返回生效币种')
+  assert.ok(Math.abs(rec78.costRmb - 1.000002) < 1e-6, 'CNY 条目成本直接人民币入账(1M×¥1 + 1×¥2/1M)')
+  assert.ok(Math.abs(rec78.apiCostRmb - rec78.costRmb) < 1e-9, 'apiCostRmb 同值(api 渠道)')
+  console.log('[ok] 供应商模型币种配置(resolveCurrency/rmbFromCost/清洗链/account 接线)通过')
+}
+
+// ===== v1.7.0 sqlite 调用明细库(issue #78):记录/迁移/聚合/重建 =====
+{
+  const { CallsDb, dayRecord, dayFromRows, sessionRows, callsDbPath } = await import('../lib/calls-db.js')
+  assert.ok(typeof callsDbPath === 'function' && callsDbPath().endsWith('calls.sqlite'), 'calls.sqlite 位于 storages/cost-meter 下')
+  const db = CallsDb.open(':memory:')
+  try {
+    // 实时记录:字段落库,day/month 键、token 桶、人民币成本。
+    db.record({
+      workspace: '/work/a', sessionId: 's1', title: '会话甲', provider: 'openai', model: 'gpt-x',
+      atMs: Date.parse('2026-08-16T10:00:00'), buckets: { input: 1000, output: 200, cacheRead: 300, cacheWrite: 0, reasoning: 0 },
+      costRmb: 0.35, apiCostRmb: 0.35,
+    })
+    db.record({
+      workspace: '/work/b', sessionId: 's2', title: '', provider: 'deepseek', model: 'deepseek-v4-flash',
+      atMs: Date.parse('2026-08-16T11:00:00'), buckets: { input: 500, output: 50, cacheRead: 0, cacheWrite: 100, reasoning: 10 },
+      costRmb: 0.1, apiCostRmb: 0.05,
+    })
+    db.record({
+      workspace: '/work/a', sessionId: 's1', title: '会话甲', provider: 'openai', model: 'gpt-x',
+      atMs: Date.parse('2026-08-17T09:00:00'), buckets: { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+      costRmb: 0.02, apiCostRmb: 0.02,
+    })
+    const day16 = dayRecord(db.rowsBetween('2026-08-16', '2026-08-16'), 7.2, '2026-08-16')
+    assert.equal(day16.input, 1500, '单日 input 聚合')
+    assert.equal(day16.output, 250, '单日 output 聚合')
+    assert.equal(day16.cacheRead, 300, '单日缓存命中桶聚合')
+    assert.equal(day16.calls, 2, '单日 calls 聚合')
+    assert.ok(Math.abs(day16.cost - 0.45 / 7.2) < 1e-9, '成本由人民币按汇率折算美元 wire')
+    assert.ok(Math.abs(day16.apiCost - 0.4 / 7.2) < 1e-9, 'apiCost 拆分折算')
+    assert.equal(day16.byProviderModel['openai:gpt-x'].input, 1000, 'byProviderModel 实时行分组')
+    assert.equal(day16.byProviderModel['deepseek:deepseek-v4-flash'].calls, 1, 'byProviderModel calls')
+    assert.equal(day16.sessions.length, 2, '当日会话明细')
+    const s1 = day16.sessions.find(s => s.id === 's1')
+    assert.equal(s1.title, '会话甲', '会话标题落库')
+    assert.ok(Math.abs(s1.cost - 0.35 / 7.2) < 1e-9, '会话成本折算')
+    // 区间聚合(月/总):不含会话明细。
+    const month = dayFromRows(db.rowsBetween('2026-08-01', '2026-08-31'), 7.2, '2026-08', false)
+    assert.equal(month.input, 1600, '月聚合 input')
+    assert.deepEqual(month.sessions, [], '区间聚合不带会话明细')
+    // 迁移:账本会话聚合导入(幂等),与实时行共存合并。
+    const migDay = {
+      date: '2026-08-16',
+      input: 3000, output: 300, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 3, cost: 0.5, apiCost: 0.5,
+      byProviderModel: { 'openai:gpt-x': { input: 3000, output: 300, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 3, cost: 0.5, apiCost: 0.5 } },
+      sessions: [{ id: 's-old', title: '旧会话', at: Date.parse('2026-08-16T08:00:00'), input: 2000, output: 200, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 2, cost: 0.3, apiCost: 0.3, byProviderModel: { 'openai:gpt-x': { input: 2000, output: 200, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 2, cost: 0.3, apiCost: 0.3 } } }],
+    }
+    db.importLedgerDay(migDay, 7.2)
+    db.importLedgerDay(migDay, 7.2) // 幂等
+    const merged = dayRecord(db.rowsBetween('2026-08-16', '2026-08-16'), 7.2, '2026-08-16')
+    assert.equal(merged.calls, 5, '迁移行(会话 2 + 残余 1)与实时行(2)合并 = 5')
+    // sqlite 存人民币:迁移行 0.5 USD × 7.2 = 3.6 RMB,wire 再按当前汇率折回。
+    assert.ok(Math.abs(merged.cost - (0.45 + 0.5 * 7.2) / 7.2) < 1e-9, '实时 + 迁移成本合并(人民币存储口径)')
+    const sOld = merged.sessions.find(s => s.id === 's-old')
+    assert.equal(sOld.title, '旧会话', '迁移会话标题')
+    assert.equal(sOld.calls, 2, '迁移会话 calls 来自 meta')
+    assert.ok(Math.abs(sOld.cost - 0.3) < 1e-9, '迁移会话成本人民币存储、wire 折回美元(往返一致)')
+    assert.equal(merged.byProviderModel['openai:gpt-x'].input, 1000 + 2000, 'byProviderModel 实时行 + 迁移 meta 合并(残余行无模型键)')
+    // 无会话残余(day.calls 超出会话之和):残余行补平日合计。
+    const resDay = { date: '2026-08-18', input: 500, output: 50, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 3, cost: 1.0, apiCost: 1.0, byProviderModel: {}, sessions: [{ id: 'sr', input: 200, output: 20, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 1, cost: 0.4, apiCost: 0.4, byProviderModel: {} }] }
+    db.importLedgerDay(resDay, 7.2)
+    const res = dayRecord(db.rowsBetween('2026-08-18', '2026-08-18'), 7.2, '2026-08-18')
+    assert.equal(res.calls, 3, '残余行补平 calls')
+    assert.ok(Math.abs(res.cost - 1.0) < 1e-9, '残余行补平日成本(人民币存储、wire 折回)')
+    // 跨日会话排行:分组 + recent 排序锚点(firstId 不落 wire)。
+    const tops = sessionRows(db.allRows(), 7.2)
+    assert.ok(tops.every(r => r.firstId === undefined || typeof r.firstId === 'number'), 'firstId 为排序内部字段')
+    // 重建迁移行(币种切换/Plan 分类变更后账本已重算):删除旧迁移行并按新账本导入。
+    const modMig = { ...migDay, cost: 0.25, apiCost: 0.25, sessions: migDay.sessions.map(s => ({ ...s, cost: 0.15, apiCost: 0.15, byProviderModel: { 'openai:gpt-x': { ...s.byProviderModel['openai:gpt-x'], cost: 0.15, apiCost: 0.15 } } })) }
+    db.importLedgerDay(modMig, 7.2)
+    db.rebuildAggregates({ '2026-08-16': modMig }, 7.2)
+    const rebuilt = dayRecord(db.rowsBetween('2026-08-16', '2026-08-16'), 7.2, '2026-08-16')
+    assert.ok(Math.abs(rebuilt.cost - (0.45 + 0.25 * 7.2) / 7.2) < 1e-9, '重建后迁移行取新账本值(实时行不变)')
+    // 清空。
+    db.clear()
+    assert.equal(db.allRows().length, 0, 'clear 清空全部调用明细')
+  } finally {
+    db.close()
+  }
+  // 客户端镜像接线:币种辅助函数存在且接入计价路径。
+  const clientSrc78 = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.ok(clientSrc78.includes('function currencyOfLocal('), '客户端镜像 currencyOfLocal 存在')
+  assert.ok(clientSrc78.includes('currencyOfLocal(resolved.entry, resolved.billingMode, config, provider)'), 'usageSplit 按生效币种折算')
+  assert.ok(clientSrc78.includes('priceCurrencyAuto'), '币种下拉 i18n 键存在')
+  assert.ok(clientSrc78.includes('priceCurrencyVendorLabel'), '供应商表级币种 i18n 键存在')
+  assert.ok(clientSrc78.includes('setVendorCurrency'), '供应商表级币种选择器存在')
+  console.log('[ok] sqlite 调用明细库(记录/迁移/聚合/重建/清空 + 客户端接线)通过')
+}
+
+// ===== v1.7.0 多 profile 共享(issue #78):sqlite 与账本配置同根 + 并发写加固 =====
+{
+  const { CallsDb, callsDbPath } = await import('../lib/calls-db.js')
+  const { resolveDshHome } = await import('@deepseek-ai/dsh-home-paths')
+  // ① 数据根:调用明细库与账本配置(ledger.json)共用 $DSH_HOME/storages/cost-meter/,
+  //    与 profile 无关(web/acp/headless 同一 DSH home 即同一份数据)。
+  assert.equal(callsDbPath(), join(resolveDshHome(), 'storages', 'cost-meter', 'calls.sqlite'), '调用明细库与账本同根(跨 profile 共享)')
+  const storeSrc = readFileSync(new URL('../lib/store.js', import.meta.url), 'utf8')
+  assert.ok(storeSrc.includes("join(resolveDshHome(), 'storages', 'cost-meter')"), '账本 ledger.json 同根')
+  const callsSrc = readFileSync(new URL('../lib/calls-db.js', import.meta.url), 'utf8')
+  assert.ok(callsSrc.includes('busy_timeout = 5000'), '多进程并发写等待(web/acp 同时运行不互丢记录)')
+  // ② 并发模型:两个连接打开同一文件,交替写入互不丢记录;事务重建跨连接可见。
+  const sharedRoot = join(tmpdir(), `cm-shared-${Date.now()}`)
+  mkdirSync(sharedRoot, { recursive: true })
+  const sharedPath = join(sharedRoot, 'calls.sqlite')
+  const connA = CallsDb.open(sharedPath)
+  const connB = CallsDb.open(sharedPath)
+  try {
+    const busy = connA.db.prepare('PRAGMA busy_timeout').get().timeout
+    assert.ok(Number(busy) >= 5000, 'busy_timeout ≥ 5000ms')
+    connA.record({ sessionId: 'sa', provider: 'openai', model: 'gpt-x', atMs: Date.parse('2026-08-20T10:00:00'), buckets: { input: 10, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, costRmb: 0.01, apiCostRmb: 0.01 })
+    connB.record({ sessionId: 'sb', provider: 'deepseek', model: 'deepseek-v4-flash', atMs: Date.parse('2026-08-20T11:00:00'), buckets: { input: 20, output: 2, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, costRmb: 0.02, apiCostRmb: 0.02 })
+    assert.equal(connA.allRows().length, 2, '连接 A 可见连接 B 的写入')
+    assert.equal(connB.allRows().length, 2, '连接 B 可见连接 A 的写入')
+    connB.rebuildAggregates({}, 7.2)
+    assert.equal(connA.allRows().length, 2, '事务重建后实时行保留(跨连接可见)')
+  } finally {
+    connA.close(); connB.close()
+    rmSync(sharedRoot, { recursive: true, force: true })
+  }
+  console.log('[ok] 多 profile 共享(同根 sqlite/账本 + 并发写加固)通过')
+}
+
+// ===== v1.7.0 安装前历史回填:importLedgerDayMissing 去重 + 日志直写(标题) =====
+{
+  const { CallsDb, dayRecord } = await import('../lib/calls-db.js')
+  const { importCallsFromLogs } = await import('../lib/backfill.js')
+  const T0 = Date.parse('2026-08-20T08:00:00')
+  // ① importLedgerDayMissing:已有实时行的会话跳过(不双计)、只补空标题;
+  //    未知会话正常导入;残余行受 (day_key,'') 判重;幂等。
+  const db = CallsDb.open(':memory:')
+  try {
+    db.record({ sessionId: 's1', provider: 'deepseek', model: 'deepseek-v4-flash', atMs: T0, buckets: { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, costRmb: 0.01, apiCostRmb: 0.01 })
+    const day = {
+      date: '2026-08-20', input: 1100, output: 210, cacheRead: 0, cacheWrite: 0, reasoning: 0,
+      calls: 2, cost: 0.11, apiCost: 0.11, byProviderModel: {},
+      sessions: [
+        { id: 's1', title: '恢复的会话标题', at: T0, input: 100, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 1, cost: 0.01, apiCost: 0.01, byProviderModel: {} },
+        { id: 's2', title: '安装前会话', at: T0 - 1000, input: 1000, output: 200, cacheRead: 0, cacheWrite: 0, reasoning: 0, calls: 1, cost: 0.1, apiCost: 0.1, byProviderModel: {} },
+      ],
+    }
+    const stats = db.importLedgerDayMissing(day, 7.2)
+    assert.equal(stats.imported, 1, '未知会话 s2 导入')
+    assert.equal(stats.skipped, 1, '已有实时行的 s1 跳过')
+    assert.equal(stats.titled, 1, 's1 空标题行补标题')
+    const merged = dayRecord(db.rowsBetween('2026-08-20', '2026-08-20'), 7.2, '2026-08-20')
+    assert.equal(merged.input, 1100, '实时行 + 迁移行不双计(input 100 + 1000)')
+    assert.equal(merged.calls, 2, 'calls 不双计')
+    const s1 = merged.sessions.find(x => x.id === 's1')
+    assert.equal(s1.title, '恢复的会话标题', '实时行标题被补齐')
+    const again = db.importLedgerDayMissing(day, 7.2)
+    assert.equal(again.imported, 0, '重复导入幂等')
+    // ② rebuildAggregates 与实时行重叠的会话不补聚合行(重建不双计)。
+    db.rebuildAggregates({ '2026-08-20': day }, 7.2)
+    const rebuilt = dayRecord(db.rowsBetween('2026-08-20', '2026-08-20'), 7.2, '2026-08-20')
+    assert.equal(rebuilt.input, 1100, '重建后 input 仍不双计')
+    assert.equal(rebuilt.calls, 2, '重建后 calls 仍不双计')
+  } finally {
+    db.close()
+  }
+  // ③ importCallsFromLogs 端到端:伪造会话日志(usage + session/title),
+  //    直写 sqlite;重复执行幂等;已有实时行只补标题。
+  const root = join(tmpdir(), `cm-log-backfill-${Date.now()}`)
+  const sessionsRoot = join(root, 'sessions')
+  const sessDir = join(sessionsRoot, 'proj-a', 'sess-1')
+  mkdirSync(sessDir, { recursive: true })
+  const logLines = [
+    { type: 'session', seq: 0, time: T0, id: 'sess-1', createdAt: T0 },
+    { type: 'session/title', seq: 1, time: T0 + 100, data: { title: '修复登录报错' } },
+    { type: 'request/header', seq: 2, time: T0 + 200, data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-flash' } } } },
+    { type: 'assistant/message', seq: 3, time: T0 + 300, data: { turn: 0, step: 0, usage: { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 300, cacheWriteTokens: 0, reasoningTokens: 0 } } },
+  ]
+  writeFileSync(join(sessDir, 'session.jsonl'), logLines.map(l => JSON.stringify(l)).join('\n') + '\n')
+  const ledgerB = new Ledger(sanitizeConfig({}), {}, join(root, 'ledger.json'))
+  const dbB = CallsDb.open(':memory:')
+  try {
+    const first = await importCallsFromLogs(dbB, ledgerB, sessionsRoot)
+    assert.equal(first.scanned, 1, '扫描 1 份日志')
+    assert.equal(first.imported, 1, '新增 1 个会话日')
+    assert.equal(first.skipped, 0, '无跳过')
+    const dayB = dayRecord(dbB.rowsBetween('2026-08-20', '2026-08-20'), ledgerB.config.exchangeRate, '2026-08-20')
+    assert.equal(dayB.input, 1000, '回填 token 入账')
+    assert.equal(dayB.output, 200, '回填输出 token')
+    assert.equal(dayB.cacheRead, 300, '回填缓存命中')
+    assert.equal(dayB.calls, 1, '回填 calls')
+    assert.ok(dayB.cost > 0, '成本按价表计价')
+    const sb = dayB.sessions.find(x => x.id === 'sess-1')
+    assert.equal(sb.title, '修复登录报错', '标题来自日志 session/title')
+    assert.ok(Number.isFinite(sb.at) && sb.at > 0, 'at 来自日志 createdAt')
+    const second = await importCallsFromLogs(dbB, ledgerB, sessionsRoot)
+    assert.equal(second.imported, 0, '重复执行不重复计费')
+    assert.equal(second.skipped, 1, '重复执行跳过已存在')
+    assert.equal(dbB.allRows().length, 1, '行数不变')
+    // 已有实时行:跳过 + 只补标题。
+    const dbC = CallsDb.open(':memory:')
+    try {
+      dbC.record({ sessionId: 'sess-1', provider: 'deepseek', model: 'deepseek-v4-flash', atMs: T0, buckets: { input: 1000, output: 200, cacheRead: 300, cacheWrite: 0, reasoning: 0 }, costRmb: 0.05, apiCostRmb: 0.05 })
+      const third = await importCallsFromLogs(dbC, ledgerB, sessionsRoot)
+      assert.equal(third.imported, 0, '已有实时行的会话不重复入账')
+      assert.equal(third.skipped, 1, '跳过已存在会话')
+      assert.equal(third.titled, 1, '补标题')
+      const dayC = dayRecord(dbC.rowsBetween('2026-08-20', '2026-08-20'), ledgerB.config.exchangeRate, '2026-08-20')
+      assert.equal(dayC.input, 1000, '金额/token 未被重复累加')
+      assert.equal(dayC.sessions.length, 1, '仍是单一会话行')
+      assert.equal(dayC.sessions[0].title, '修复登录报错', '实时行空标题被补齐')
+    } finally {
+      dbC.close()
+    }
+  } finally {
+    dbB.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+  console.log('[ok] 安装前历史回填(去重/幂等/标题补齐 + 日志直写)通过')
 }
 
 console.log('[ok] 全部验证通过')

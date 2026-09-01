@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.7.1] - unreleased(本地改造:自动模型路由)
+
+### 新增(自动模型路由:峰谷时段自动切换正在运行的会话的 provider)
+
+- **平价时段自动用 DeepSeek 官方、高峰时段自动用 OpenCode Go**——按插件已有的峰谷规则(UTC 峰窗口 01:00–04:00 / 06:00–10:00,周末全天平价)轮询档位,档位变化时经宿主 `sessionController.selectModel` 把**当前正在查看的会话**的下一轮请求切换到目标 provider;两侧路由默认 `deepseek-v4-flash` + `max` 思考深度,可在设置页逐侧配置。
+- **只对 flash 会话生效**:切换前读取会话的模型选择投影(pending → lastUsed,新会话按 flash 处理),当前模型不是 `deepseek-v4-flash` 时跳过——用户手动改选了其它模型后自动路由不再干预;切换只改 provider、模型保持 flash,与判定规则自洽。
+- **会话身份由客户端上报**:composer dock 组件持有 `session.sessionId`(InputZone owner props),经新增 RPC `costMeter.setActiveSession` 上报宿主;离开会话(空串)清除;跨会话切换后旧会话的已应用标记作废。
+- **新开 RPC**:`setActiveSession(sessionId)`(typert 清单同步更新 wire + model 成员);`getState` 快照新增 `autoRoute` 运行状态(当前档位/已应用路由/上次切换时刻/跳过与错误原因)。
+- **配置**:设置页「费用设置 → 自动模型路由」面板(开关 + 检查间隔 1-60 分钟 + 平价/高峰双侧 provider/model/思考深度);检查间隔到点轮询、配置变更即时重评估;输入框下方显示「高峰·OpenCode Go / 平价·DeepSeek」状态 chip,点击一键关闭。
+- **实现要点**:复用 `pricing.js` 的 `isPeakHour`/周末规则与既有时段口径;`sessionController`/`sessions`/`sessionProjections` 均为可选依赖(`ctx.get` 判空),宿主无会话控制服务时状态行提示「宿主未提供会话控制服务」。
+
+### 验证
+
+- `node scripts/build.mjs` 重建 lib/client.js(260,827 字节,仍在 262,144 上限内);宿主三文件 `node --check` 通过。
+- 临时脚本单测:档位判定(周末/峰窗口内/窗口外)、`autoRoute` 默认配置、`applyConfigPatch` 合法补丁清洗(provider 去空白)与非法补丁拒绝(enabled 非布尔、空 provider)全部通过。
+
+## [1.7.0] - 2026-08-29
+
+### 新增(issue #78:调用明细落 SQLite + 页面统计改以 SQLite 为数据源)
+
+- **直接挂钩 llm/stream 调用,逐次写入 SQLite 调用明细库**(`$DSH_HOME/storages/cost-meter/calls.sqlite`,node:sqlite,与宿主 session-query 同驱动):每次模型调用记录 工作区(会话 cwd)/会话 id/会话标题/发起时间/输入 token/输出 token/缓存命中与写入 token(缓存触发)/reasoning token/成本,与账本同源同值(复用 ledger.account 的定价结果)。
+- **整体花费口径统一人民币**:sqlite 行的成本恒以 RMB 入账(CNY 价原值、USD 价按展示汇率折算);下发 wire 时按当前汇率折回美元,客户端展示管道往返不变。
+- **页面整体统计基于 sqlite**:今日/本月/累计卡片、90 天历史、当日会话明细、跨日会话排行全部改查调用明细库;预算已用金额同步切换。升级前账本历史以聚合行一次性幂等导入,统计无缝衔接;账本 ledger.json 继续承担会话投影(徽章)、Plan 统计与余额对账。
+- **供应商模型货币类型配置**:第三方价格表支持表级(`prices.providers.<id>.currency`)与模型级(`currency`)两种币种配置,设置页目录面板厂商标题行与模型价格卡各有一个 USD/CNY 下拉;生效币种优先级 = 模型级 → DeepSeek 峰谷主表跟随官方价币种 → 供应商表级 → USD。计费按生效币种折算,人民币价模型不再强制按美元入账。
+- **配置变更与账本联动重算**:写入 `__local__`/本地模型归零、Plan 分类重拆、官方价币种切换(全量重定价)时,调用明细随账本同步重算(实时行就地重算、迁移行按重算后账本重建),页面统计与账本逐位一致。
+- **依赖升级**:`@deepseek-ai/dsh-credentials` / `@deepseek-ai/dsh-home-paths` 升至与本工作区 deepseek-harness 一致的 `0.1.2-alpha.1`(本地安装经 pnpm-workspace.yaml overrides 指向工作区源码)。
+- **安装前历史回填(一次性脚本)**:`node scripts/backfill-calls-sqlite.mjs` 把会话日志里尚未入库的会话消耗统计直写 sqlite 调用明细(与实时计费同源回放:逐事件计价、fork 种子剔除、包装层去重、标题取日志最后一次 `session/title`);去重按 `(day_key, session_id)` 对现有全部行(实时行与迁移行)判重——已存在会话只补空标题、金额绝不动,可重复执行增量补齐。`importLedgerDayMissing` 同步用于启动迁移 / 手动导入 / 账本重算重建,消除「实时行 + 迁移聚合行」双计隐患。
+- **对账本地费用统一从 sqlite 取数**:对账提示(余额当日变动交叉校验)的「本地账本今日官方渠道费用」此前读账本内存聚合(各进程一份、与页面统计不一致),现改为从调用明细库取官方渠道成本(人民币口径,按对账同一汇率折回美元比较)——与侧边栏/卡片同源,多 profile(web/acp)共用一份明细后对账口径一致。
+- **Web UI 会话列表显示标题**:恢复/回放会话的 `session/title` 事件不会重发到 firehose,插件加载时从会话日志取最后一次标题补进实时调用行;回填脚本补齐存量空标题行,「今日会话/会话排行/历史明细」列表从显示截断的会话 id 改为显示会话标题。
+- **多 profile 共用同一份数据**:DSH home 是单根(`$DSH_HOME` 或 `~/.dsh`),web / acp / headless 等 profile 的调用明细库与账本配置天然同根(`$DSH_HOME/storages/cost-meter/`);调用明细库加 `busy_timeout=5000`(WAL 下并发写等待而非 SQLITE_BUSY 互丢记录),迁移行重建包事务,多进程同时运行时统计一致。
+
+### 验证
+
+- verify.mjs 新增 2 个 v1.7.0 回归块:供应商模型币种配置(优先级/rmbFromCost/补丁与清洗链/account 接线)与 sqlite 调用明细库(记录/迁移幂等/实时+迁移合并/残余行补平/重建/清空/客户端接线);依赖锁版门禁更新到 0.1.2-alpha.1;既有全量断言通过。
+- `node scripts/build.mjs` 重建 lib/client.js(252,087 字节,仍在 262,144 上限内)。
+
+
 ## [1.6.12] - 2026-08-29
 
 ### 修复(issue #77:压缩摘要调用漏计,compaction/summary 不进折叠)

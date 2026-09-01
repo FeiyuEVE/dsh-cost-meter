@@ -27,6 +27,11 @@ window.__ModuleLoader__.load({
     // 恢复三位置切换时改回 true 即可(下拉框、通用设置注入与独立分节注册都会随之恢复)。
     const USAGE_POSITION_SWITCHABLE = false
 
+    // Codex 周额度探测(issue #59)开关:默认关闭——不再向 /plugins/dsh-openai-codex/auth/status
+    // 发起探测请求,避免未安装 dsh-codex-connect 插件时浏览器控制台出现 404 噪音。
+    // 需要侧边栏 Codex 卡片 / 额度横条 chip 时改回 true 并重新构建。
+    const CODEX_PROBE_ENABLED = false
+
     // ── 样式 ────────────────────────────────────────────────────────────────
 
     const css = [
@@ -140,6 +145,8 @@ window.__ModuleLoader__.load({
       '.cm-price-name{font-weight:600;font-size:13px}',
       '.cm-price-legacy{font-size:11px;color:var(--dsw-alias-label-tertiary);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:1px 8px}',
       '.cm-price-row{display:grid;grid-template-columns:52px 1fr 1fr 1fr;gap:8px;align-items:center}',
+      // 计费币种下拉(issue #78):供应商模型条目级/表级货币配置;52px 列内紧凑显示。
+      '.cm-price-currency{width:100%;min-width:0;padding:4px 4px;font-size:11px;border-radius:6px}',
       '.cm-price-row span{font-size:12px;color:var(--dsw-alias-label-tertiary)}',
       '.cm-price-row input{width:100%}',
       '.cm-buttons{display:flex;flex-wrap:wrap;gap:10px;align-items:center}',
@@ -566,6 +573,30 @@ window.__ModuleLoader__.load({
         peakAlertPreviewTag: '(预览)',
         peakPanelTitle: '峰谷计价与提示',
         peakNoticeHiddenHint: '提示已隐藏:需启用峰谷计价并开启「峰时高价时段显著提示」。',
+        // 自动模型路由(峰谷自动切换 provider)
+        autoRouteTitle: '自动模型路由',
+        autoRouteEnabledLabel: '平价时段自动用 DeepSeek 官方,高峰时段自动用 OpenCode Go',
+        autoRouteDesc: '切换作用到当前正在查看的会话(下一轮请求生效);两侧模型默认 deepseek-v4-flash + max 思考深度。只对当前模型为 deepseek-v4-flash 的会话自动切换——手动改选其它模型后不再干预。',
+        autoRouteIntervalLabel: '档位检查间隔(分钟)',
+        autoRouteIntervalHint: '每个间隔轮询一次峰谷档位,档位变化才执行切换(1-60)。',
+        autoRouteOffPeak: '平价时段(谷)',
+        autoRoutePeak: '高峰时段',
+        autoRouteProvider: 'Provider',
+        autoRouteModel: '模型',
+        autoRouteEffort: '思考深度',
+        autoRouteEffortOff: '不指定',
+        autoRouteStatusNone: '未开启',
+        autoRouteStatusOn: '已开启',
+        autoRouteTierPeak: '高峰',
+        autoRouteTierOffpeak: '平价',
+        autoRouteStatusLine: '当前:{tier} → {provider} / {model}',
+        autoRouteSkippedNoSession: '等待会话上报…',
+        autoRouteSkippedNonFlash: '当前会话模型不是 flash,自动路由不干预',
+        autoRouteSkippedNoController: '宿主未提供会话控制服务',
+        autoRouteSwitchFailed: '切换失败:{message}',
+        autoRouteLastSwitch: '上次切换 {time}',
+        autoRouteChipEnable: '自动模型路由已开启:点击关闭',
+        autoRouteChipDisabled: '自动模型路由已关闭:点击开启',
         groupGeneral: '常规',
         groupMoney: '金额与币种',
         groupSidebar: '侧边栏显示',
@@ -734,6 +765,10 @@ window.__ModuleLoader__.load({
         currencyCny: '人民币 CNY',
         currencyUsd: '美元 USD',
         currencyEur: '欧元 EUR',
+        priceCurrencyLabel: '计费币种:该模型价格以何种货币计价;留空跟随供应商默认(当前 {currency})',
+        priceCurrencyVendorLabel: '供应商默认计费币种:该厂商全部模型的缺省计价货币',
+        priceCurrencyVendorAuto: '跟随',
+        priceCurrencyAuto: '跟随({currency})',
         symbolLabel: '货币符号',
         rateLabel: '汇率(1 美元 = ? 目标币种)',
         decimalsLabel: '小数位数',
@@ -985,6 +1020,30 @@ window.__ModuleLoader__.load({
         peakAlertPreviewTag: ' (preview)',
         peakPanelTitle: 'Peak/off-peak pricing & notice',
         peakNoticeHiddenHint: 'Notice hidden: enable peak/off-peak pricing and the “prominent notice” toggle.',
+        // Auto model routing (tier-based provider switching)
+        autoRouteTitle: 'Auto model routing',
+        autoRouteEnabledLabel: 'Use DeepSeek official during off-peak hours, OpenCode Go during peak hours',
+        autoRouteDesc: 'Switching applies to the session you are viewing (effective from its next request); both routes default to deepseek-v4-flash with max reasoning effort. Auto-route only touches sessions whose current model is deepseek-v4-flash — after you pick another model manually it stops intervening.',
+        autoRouteIntervalLabel: 'Tier check interval (minutes)',
+        autoRouteIntervalHint: 'Polls the peak/off-peak tier every interval and switches only when the tier changes (1-60).',
+        autoRouteOffPeak: 'Off-peak hours',
+        autoRoutePeak: 'Peak hours',
+        autoRouteProvider: 'Provider',
+        autoRouteModel: 'Model',
+        autoRouteEffort: 'Reasoning effort',
+        autoRouteEffortOff: 'Not set',
+        autoRouteStatusNone: 'Off',
+        autoRouteStatusOn: 'On',
+        autoRouteTierPeak: 'peak',
+        autoRouteTierOffpeak: 'off-peak',
+        autoRouteStatusLine: 'Now: {tier} → {provider} / {model}',
+        autoRouteSkippedNoSession: 'Waiting for a session…',
+        autoRouteSkippedNonFlash: 'Current session model is not flash; auto-route stays out',
+        autoRouteSkippedNoController: 'Host session controller unavailable',
+        autoRouteSwitchFailed: 'Switch failed: {message}',
+        autoRouteLastSwitch: 'Last switch {time}',
+        autoRouteChipEnable: 'Auto model routing on: click to turn off',
+        autoRouteChipDisabled: 'Auto model routing off: click to turn on',
         groupGeneral: 'General',
         groupMoney: 'Money & currency',
         groupSidebar: 'Sidebar display',
@@ -1153,6 +1212,10 @@ window.__ModuleLoader__.load({
         currencyCny: 'Chinese Yuan (CNY)',
         currencyUsd: 'US Dollar (USD)',
         currencyEur: 'Euro (EUR)',
+        priceCurrencyLabel: 'Billing currency: the currency this model\'s price is denominated in; empty follows the vendor default (currently {currency})',
+        priceCurrencyVendorLabel: 'Vendor default billing currency: the default pricing currency for all models of this vendor',
+        priceCurrencyVendorAuto: 'Auto',
+        priceCurrencyAuto: 'Auto ({currency})',
         symbolLabel: 'Currency symbol',
         rateLabel: 'Exchange rate (1 USD = ? target currency)',
         decimalsLabel: 'Decimal places',
@@ -1749,6 +1812,15 @@ window.__ModuleLoader__.load({
           result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
         },
         {
+          // 自动模型路由(v1.7):上报当前正在查看/运行的会话 id(空串 = 离开会话)。
+          id: 'dsh-cost-meter#costMeter/setActiveSession', service: 'costMeter', namespace: 'costMeter', method: 'setActiveSession',
+          invocation: { kind: 'direct' },
+          parameters: [
+            { name: 'sessionId', wire: 'sessionId', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionId', schema: sessionIdCodec } },
+          ],
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+        },
+        {
           // 从 DSH 凭据库移除一枚密钥(v1.6.8)。
           id: 'dsh-cost-meter#costMeter/clearCredential', service: 'costMeter', namespace: 'costMeter', method: 'clearCredential',
           invocation: { kind: 'direct' },
@@ -1857,6 +1929,20 @@ window.__ModuleLoader__.load({
       const r = Number(rate)
       if (!Number.isFinite(r) || r <= 0) return c
       return c / r
+    }
+    /** 生效计费币种(与 lib/pricing.js resolveCurrency 同口径的客户端镜像):
+     *  条目显式 currency → deepseek-peak 上下文(prices.currency)→ 供应商表级
+     *  currency → USD。修改时与 lib 侧同步(verify.mjs 有接线断言)。 */
+    function currencyOfLocal(entry, billingMode, config, provider) {
+      if (entry !== null && typeof entry === 'object' && (entry.currency === 'CNY' || entry.currency === 'USD')) return entry.currency
+      if (billingMode === 'deepseek-peak') return config?.prices?.currency === 'CNY' ? 'CNY' : 'USD'
+      if (typeof provider === 'string' && provider.length > 0) {
+        let id = provider.trim().toLowerCase()
+        if (id.startsWith('llm-')) id = id.slice(4)
+        const table = config?.prices?.providers?.[id]
+        if (table !== null && typeof table === 'object' && (table.currency === 'CNY' || table.currency === 'USD')) return table.currency
+      }
+      return 'USD'
     }
     /**
      * 进度条方向(issue #67):读取配置中某组条的填充语义。
@@ -2205,7 +2291,7 @@ window.__ModuleLoader__.load({
         const resolved = resolveClientPrice(provider, modelId, config)
         if (resolved.priced) {
           const c = costOfBuckets(byModel[providerKey], tierFor(normalizeClientPrice(resolved.entry), now, { ...peak, enabled: resolved.billingMode === 'deepseek-peak' && peak.enabled }))
-          const billed = usdFromCostLocal(c, resolved.billingMode === 'deepseek-peak' && config.prices?.currency === 'CNY' ? 'CNY' : 'USD', config.exchangeRate)
+          const billed = usdFromCostLocal(c, currencyOfLocal(resolved.entry, resolved.billingMode, config, provider), config.exchangeRate)
           total += billed
           if (billingClassOfLocal(provider, modelId, config) === 'api') api += billed
         }
@@ -2226,7 +2312,7 @@ window.__ModuleLoader__.load({
         reasoning: Math.max(0, (usage.reasoning ?? 0) - modeled.reasoning),
       }
       const leftoverCost = costOfBuckets(leftover, tierFor(priceEntryFor('default', config.prices), now, peak))
-      const leftoverBilled = usdFromCostLocal(leftoverCost, config.prices?.currency === 'CNY' ? 'CNY' : 'USD', config.exchangeRate)
+      const leftoverBilled = usdFromCostLocal(leftoverCost, currencyOfLocal(priceEntryFor('default', config.prices), 'deepseek-peak', config, 'deepseek'), config.exchangeRate)
       total += leftoverBilled
       api += leftoverBilled
       return { total, api }
@@ -2891,6 +2977,63 @@ window.__ModuleLoader__.load({
           el('span', { className: 'cm-corner-chip' + (c.level === 'ok' ? '' : ' ' + c.level) }, c.text))))
     }
 
+    // ── 自动模型路由状态 chip(composer dock):当前档位/provider,点击开关 ──
+
+    /** 自动路由 chip:上报当前会话 + 展示档位/路由 + 点击开/关(组件内自门控)。 */
+    function AutoRouteChip(props) {
+      // Hook 全部前置(开关翻转会提前 return null,顺序必须稳定)。
+      const costStore = props.useCost ? props.useCost(s => s) : undefined
+      const [toggling, setToggling] = useState(false)
+      const sessionId = props.session?.sessionId
+      // 页面会话变化时上报宿主:自动路由只切最近上报的会话;离开会话(空串)清除。
+      useEffect(() => {
+        if (props.api !== undefined && typeof props.api.setActiveSession === 'function') {
+          props.api.setActiveSession(typeof sessionId === 'string' ? sessionId : '')
+        }
+      }, [sessionId])
+      const state = costStore?.state
+      const config = state?.config
+      const autoRoute = config?.autoRoute
+      if (autoRoute === null || autoRoute === undefined || autoRoute.enabled !== true) return null
+      const t = makeT(resolveLocale(config?.locale))
+      const status = state?.autoRoute
+      const tier = status?.tier === 'peak' ? 'peak' : 'offpeak'
+      const fallback = autoRoute[tier] ?? {}
+      const provider = typeof status?.provider === 'string' && status.provider.length > 0 ? status.provider : fallback.provider ?? ''
+      const model = typeof status?.model === 'string' && status.model.length > 0 ? status.model : fallback.model ?? ''
+      const pretty = provider === 'opencode-go' ? 'OpenCode Go' : provider === 'deepseek-official' ? 'DeepSeek' : provider || '—'
+      const label = (tier === 'peak' ? t('autoRouteTierPeak') : t('autoRouteTierOffpeak')) + '·' + pretty
+      const tip = (() => {
+        if (status?.skipped === 'no-session') return t('autoRouteSkippedNoSession')
+        if (status?.skipped === 'non-flash') return t('autoRouteSkippedNonFlash')
+        if (typeof status?.error === 'string' && status.error.length > 0) {
+          return '⚠ ' + t('autoRouteSwitchFailed', { message: status.error })
+        }
+        return t('autoRouteStatusLine', {
+          tier: tier === 'peak' ? t('autoRouteTierPeak') : t('autoRouteTierOffpeak'),
+          provider: provider || '—',
+          model: model || '—',
+        }) + ' · ' + t('autoRouteChipEnable')
+      })()
+      const toggle = () => {
+        if (toggling) return
+        setToggling(true)
+        props.api.updateConfig({ autoRoute: { ...autoRoute, enabled: false } })
+          .then(() => setToggling(false), () => setToggling(false))
+      }
+      return el('div', { className: 'cm-corner', style: { justifyContent: 'flex-start' } },
+        el(Tooltip, { label: tip, side: 'top', delayMs: 500 },
+          el('span', {
+            className: 'cm-corner-chip',
+            role: 'button',
+            tabIndex: 0,
+            onClick: toggle,
+            onKeyDown: event => {
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() }
+            },
+          }, label)))
+    }
+
     /**
      * 峰谷相位与相邻切换点(与 lib/pricing.js 的 peakPhaseAt 同逻辑;bundle 无法导入,
      * 修改时两处需同步)。窗口半开区间 [start, end),兼容跨午夜窗口。
@@ -3386,8 +3529,10 @@ window.__ModuleLoader__.load({
     /**
      * 探测 Codex 周额度。结果写模块缓存并广播;非 force 时 5 分钟内直接用缓存
      * (404/未登录/网络错误都按 unavailable 缓存,避免每次渲染反复打同一空路由)。
+     * CODEX_PROBE_ENABLED=false 时直接短路,不发任何请求(含 bundle 装载探测与手动重探)。
      */
     async function fetchCodexQuota(force = false) {
+      if (!CODEX_PROBE_ENABLED) return undefined
       if (codexQuotaCache.inFlight !== null) return codexQuotaCache.inFlight
       if (!force && codexQuotaCache.fetchedAt > 0 && Date.now() - codexQuotaCache.fetchedAt < 5 * 60_000) return undefined
       const task = (async () => {
@@ -4390,6 +4535,111 @@ window.__ModuleLoader__.load({
         el('p', { className: 'cm-hint' }, t('weekendRuleNote')))
     }
 
+    // ── 自动模型路由面板(平价/高峰自动切换 provider;仅对 flash 会话生效) ──
+
+    /** 自动路由单侧路由编辑行(provider / 模型 / 思考深度)。 */
+    function AutoRouteRouteInputs(props) {
+      const { side, autoRoute, setSide, t } = props
+      return el(Fragment, { key: side },
+        el('div', { className: 'cm-grid-group' }, side === 'peak' ? t('autoRoutePeak') : t('autoRouteOffPeak')),
+        el('div', { className: 'cm-grid' },
+          el('div', { className: 'cm-field' },
+            el('label', null, t('autoRouteProvider')),
+            el('input', {
+              className: 'cm-input',
+              value: autoRoute[side]?.provider ?? '',
+              placeholder: 'deepseek-official / opencode-go',
+              onChange: event => setSide(side, 'provider', event.target.value),
+            })),
+          el('div', { className: 'cm-field' },
+            el('label', null, t('autoRouteModel')),
+            el('input', {
+              className: 'cm-input',
+              value: autoRoute[side]?.model ?? '',
+              placeholder: 'deepseek-v4-flash',
+              onChange: event => setSide(side, 'model', event.target.value),
+            })),
+          el('div', { className: 'cm-field' },
+            el('label', null, t('autoRouteEffort')),
+            el('select', {
+              className: 'cm-input',
+              value: autoRoute[side]?.reasoningEffort ?? '',
+              onChange: event => setSide(side, 'reasoningEffort', event.target.value),
+            },
+              el('option', { value: '' }, t('autoRouteEffortOff')),
+              el('option', { value: 'off' }, 'off'),
+              el('option', { value: 'low' }, 'low'),
+              el('option', { value: 'high' }, 'high'),
+              el('option', { value: 'max' }, 'max')))))
+    }
+
+    /** 自动模型路由面板:开关 + 双侧路由 + 当前档位/切换状态。 */
+    function AutoRoutePanel(props) {
+      const { state, draft, setDraft, t } = props
+      const config = state.config
+      const autoRoute = draft?.autoRoute ?? config.autoRoute ?? { enabled: false, checkIntervalMinutes: 1 }
+      const status = state.autoRoute
+      const setField = (field, value) => {
+        if (draft === null) return
+        setDraft({ ...draft, autoRoute: { ...autoRoute, [field]: value } })
+      }
+      const setSide = (side, field, value) => {
+        if (draft === null) return
+        setDraft({
+          ...draft,
+          autoRoute: { ...autoRoute, [side]: { ...(autoRoute[side] ?? {}), [field]: value } },
+        })
+      }
+      // 状态行:host 下发运行状态(档位/已应用路由/跳过与错误),未启用或旧宿主时兜底。
+      const statusLine = (() => {
+        if (autoRoute.enabled !== true) return el('p', { className: 'cm-hint' }, t('autoRouteStatusNone'))
+        if (status === null || status === undefined || typeof status !== 'object') return null
+        if (status.skipped === 'no-session') return el('p', { className: 'cm-hint' }, t('autoRouteSkippedNoSession'))
+        if (status.skipped === 'non-flash') return el('p', { className: 'cm-hint' }, t('autoRouteSkippedNonFlash'))
+        if (status.skipped === 'no-controller') return el('p', { className: 'cm-hint' }, t('autoRouteSkippedNoController'))
+        if (typeof status.error === 'string' && status.error.length > 0) {
+          return el('p', { className: 'cm-hint' }, '⚠ ' + t('autoRouteSwitchFailed', { message: status.error }))
+        }
+        if (status.tier !== 'peak' && status.tier !== 'offpeak') return null
+        const provider = typeof status.provider === 'string' ? status.provider : autoRoute[status.tier]?.provider ?? ''
+        const model = typeof status.model === 'string' ? status.model : autoRoute[status.tier]?.model ?? ''
+        const tierLabel = status.tier === 'peak' ? t('autoRouteTierPeak') : t('autoRouteTierOffpeak')
+        const parts = [t('autoRouteStatusLine', { tier: tierLabel, provider: provider || '—', model: model || '—' })]
+        if (typeof status.lastSwitchAt === 'number' && status.lastSwitchAt > 0) {
+          parts.push(t('autoRouteLastSwitch', { time: new Date(status.lastSwitchAt).toLocaleString() }))
+        }
+        return el('p', { className: 'cm-hint' }, parts.join(' · '))
+      })()
+      return el('div', { className: 'cm-budget' },
+        el('div', { className: 'cm-budget-head' },
+          el('h3', { className: 'cm-h' }, t('autoRouteTitle')),
+          el('label', { className: 'cm-check' },
+            el('input', {
+              type: 'checkbox',
+              checked: autoRoute.enabled === true,
+              onChange: event => setField('enabled', event.target.checked),
+            }),
+            el('span', null, t('autoRouteEnabledLabel')))),
+        autoRoute.enabled === true
+          ? el('div', { className: 'cm-collapse-body' },
+            el('div', { className: 'cm-grid' },
+              el('div', { className: 'cm-field' },
+                el('label', null, t('autoRouteIntervalLabel')),
+                el('input', {
+                  className: 'cm-input narrow', type: 'number', min: '1', max: '60', step: '1',
+                  value: String(typeof autoRoute.checkIntervalMinutes === 'number' && Number.isFinite(autoRoute.checkIntervalMinutes) ? autoRoute.checkIntervalMinutes : 1),
+                  onChange: event => {
+                    const parsed = Number(event.target.value)
+                    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 60) setField('checkIntervalMinutes', parsed)
+                  },
+                }))),
+            el(AutoRouteRouteInputs, { side: 'offPeak', autoRoute, setSide, t }),
+            el(AutoRouteRouteInputs, { side: 'peak', autoRoute, setSide, t }),
+            statusLine,
+            el('p', { className: 'cm-hint' }, t('autoRouteDesc')))
+          : null)
+    }
+
     function numInput(props, onChange) {
       const value = props.value
       return el('input', {
@@ -4507,11 +4757,12 @@ window.__ModuleLoader__.load({
       meta: 'Meta', meituan: '美团 LongCat', 'opencode-go': 'OpenCode Go',
     }
 
-    /** 目录条目价格摘要(美元;峰谷两档写 谷/峰)。 */
+    /** 目录条目价格摘要(美元;峰谷两档写 谷/峰;条目级币种 CNY 用 ¥ 标注)。 */
     function catalogPriceText(entry, t) {
       if (entry === null || typeof entry !== 'object') return ''
       if (entry.unpriced === true) return t('catalogUnpriced')
-      const usd = n => '$' + String(n)
+      const sym = entry.currency === 'CNY' ? '¥' : '$'
+      const usd = n => sym + String(n)
       const pk = entry.peak !== null && typeof entry.peak === 'object' ? entry.peak : null
       if (pk !== null) return usd(entry.cacheMiss) + '/' + usd(pk.cacheMiss) + ' in · ' + usd(entry.output) + '/' + usd(pk.output) + ' out'
       return usd(entry.cacheMiss ?? entry.input ?? 0) + ' in · ' + usd(entry.output ?? 0) + ' out'
@@ -4613,12 +4864,35 @@ window.__ModuleLoader__.load({
             el('p', { className: 'cm-note' }, t('catalogNote')),
             providerIds.map(provider => {
               const vendorOpen = openVendors[provider] === true
+              // 供应商表级币种(issue #78):该家模型的缺省计费币种;空 = 跟随默认(USD)。
+              // 深色分隔的 select 放标题右侧;点击不切换折叠。
+              const setVendorCurrency = event => {
+                if (draft === null) return
+                const value = event.target.value
+                const providers = { ...(draft.prices.providers ?? {}) }
+                // 保留既有 models(configSchema 要求供应商表必含 models 键)。
+                const table = { ...(providers[provider] ?? { models: {} }) }
+                if (value === 'USD' || value === 'CNY') table.currency = value
+                else delete table.currency
+                providers[provider] = table
+                setDraft({ ...draft, prices: { ...draft.prices, providers } })
+              }
               return el('div', { key: provider },
                 el('div', {
                   className: 'cm-catalog-vendor cm-vendor-toggle',
                   onClick: () => setOpenVendors(v => ({ ...v, [provider]: !vendorOpen })),
                 },
-                  el('span', null, (vendorOpen ? '▾ ' : '▸ ') + (CATALOG_VENDOR_LABELS[provider] ?? provider) + ' · ' + countModels(provider))),
+                  el('span', null, (vendorOpen ? '▾ ' : '▸ ') + (CATALOG_VENDOR_LABELS[provider] ?? provider) + ' · ' + countModels(provider)),
+                  provider === 'deepseek' ? null : el('select', {
+                    className: 'cm-input cm-price-currency',
+                    value: (draft?.prices?.providers?.[provider] ?? prices.providers?.[provider])?.currency ?? '',
+                    title: t('priceCurrencyVendorLabel'),
+                    onClick: event => event.stopPropagation(),
+                    onChange: setVendorCurrency,
+                  },
+                    el('option', { value: '' }, t('priceCurrencyVendorAuto')),
+                    el('option', { value: 'USD' }, t('priceCurrencyUsd')),
+                    el('option', { value: 'CNY' }, t('priceCurrencyCny')))),
                 vendorOpen
                   ? el(Fragment, null,
                     provider === 'deepseek' ? el('p', { className: 'cm-hint' }, t('catalogDeepseekNote')) : null,
@@ -4957,6 +5231,18 @@ window.__ModuleLoader__.load({
         models[modelId] = { ...(models[modelId] ?? {}), [field]: Math.max(0, value) }
         writeModels(models)
       }
+      // 条目级计费币种(issue #78):USD | CNY;空 = 跟随供应商表级/上下文默认。
+      const setCurrency = value => {
+        if (draft === null) return
+        const models = { ...((draft.prices.providers ?? {})[provider]?.models ?? {}) }
+        const next = { ...(models[modelId] ?? {}) }
+        if (value === 'USD' || value === 'CNY') next.currency = value
+        else delete next.currency
+        models[modelId] = next
+        writeModels(models)
+      }
+      const tableCurrency = draft?.prices?.providers?.[provider]?.currency
+      const currency = entry?.currency ?? (tableCurrency === 'CNY' ? 'CNY' : 'USD')
       const remove = () => {
         if (draft === null) return
         const models = { ...((draft.prices.providers ?? {})[provider]?.models ?? {}) }
@@ -4976,7 +5262,16 @@ window.__ModuleLoader__.load({
               el('span', null, ''),
               el('span', null, t('flatInput')), el('span', null, t('flatCached')), el('span', null, t('flatOutput'))),
             el('div', { className: 'cm-price-row' },
-              el('span', null, 'USD'),
+              // 币种选择:条目显式值优先,空项 = 跟随供应商表级/默认 USD。
+              el('select', {
+                className: 'cm-input cm-price-currency',
+                value: entry?.currency ?? '',
+                title: t('priceCurrencyLabel'),
+                onChange: event => setCurrency(event.target.value),
+              },
+                el('option', { value: '' }, t('priceCurrencyAuto', { currency })),
+                el('option', { value: 'USD' }, t('priceCurrencyUsd')),
+                el('option', { value: 'CNY' }, t('priceCurrencyCny'))),
               // 第三方三桶为必填计价结构:清空不提交(保留原值),避免误清成 0 价免费。
               numInput({ value: entry?.input ?? null, emptyMode: 'ignore' }, v => setNum('input', v)),
               numInput({ value: entry?.cachedInput ?? null, emptyMode: 'ignore' }, v => setNum('cachedInput', v)),
@@ -6211,6 +6506,8 @@ window.__ModuleLoader__.load({
         tab === 'pricing' ? el(Fragment, { key: 'pricing' },
         // 峰谷计价与提示(独立面板:启用/提示开关、样式切换、时段条预览)
         el(PeakPanel, { state, draft, setDraft, t }),
+        // 自动模型路由(平价/高峰自动切换 provider,仅对 flash 会话生效)
+        el(AutoRoutePanel, { state, draft, setDraft, t }),
         // 价格表(可折叠,默认收起;priceTableDisplay 按模型门控:未勾选直接显示的模型收入拓展价格表,该开关只决定展示位置)
         el('div', null,
           el('button', { type: 'button', className: 'cm-collapse-h', 'aria-expanded': String(priceOpen), onClick: () => setPriceOpen(!priceOpen) },
@@ -6421,6 +6718,15 @@ window.__ModuleLoader__.load({
 
       const api = {
         reload,
+        // 自动模型路由(v1.7):上报当前正在查看/运行的会话(空串 = 离开会话)。
+        // 不抛错:上报失败只影响自动切换,不影响费用统计主流程。
+        setActiveSession: async sessionId => {
+          try {
+            const result = await costMeter.setActiveSession(typeof sessionId === 'string' ? sessionId : '')
+            if (result === null || typeof result !== 'object' || result.ok !== true) return
+            if (result.value.state !== undefined) store.set({ status: 'ready', error: null, state: result.value.state })
+          } catch (_) { /* 旧宿主无此方法时静默 */ }
+        },
         updateConfig: async patch => {
           const state = await call('updateConfig', [patch])
           store.set({ status: 'ready', error: null, state })
@@ -6574,6 +6880,15 @@ window.__ModuleLoader__.load({
         const dispose = slots.register(
           { name: 'conversation.input.dock', id: 'cost-meter-qstrip', order: 5, inject: injected },
           QuotaStrip,
+        )
+        return dispose
+      })
+      // 自动模型路由状态 chip(composer dock):静态注册,组件内部按
+      // autoRoute.enabled 门控;同时负责向宿主上报当前会话 id。
+      slots.inject('conversation.composer.dock', () => {
+        const dispose = slots.register(
+          { name: 'conversation.composer.dock', id: 'cost-meter-autoroute', order: 10, inject: injected },
+          AutoRouteChip,
         )
         return dispose
       })

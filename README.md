@@ -35,6 +35,7 @@
 | 当日费用 | 侧边栏底部(设置按钮上方) | 「今日 ¥x」,悬停见调用次数与 token 明细 |
 | 预算图框 | 侧边栏底部(余额行与设置按钮之间) | 圆角方形图框:预算、已用%、进度条、今日费用与占预算%、已用/额度,≥80% 预警、≥100% 超支 |
 | 汇总卡片 | 设置页 | 今日 / 本月 / 累计费用与调用次数 |
+| 调用明细(SQLite) | 后台自动记录 | 每次模型调用写入 SQLite 调用明细库($DSH_HOME/storages/cost-meter/calls.sqlite):工作区(会话 cwd)/会话 id/会话标题/时间/token 输入与输出/缓存命中(触发)/成本,成本统一人民币口径;页面今日/本月/累计、历史记录与跨日会话排行均以该库为数据源,升级前账本历史自动幂等迁移;供应商价格支持表级/模型级 USD/CNY 币种配置 |
 | Token 用量统计 | 设置页(费用设置) | 历史累计 token 总量(输入/缓存/输出/调用)+ 类 Codex 的 26 周每日用量方格热图,横向铺满设置页宽度,悬停见当日明细 |
 | Token Plan 用量统计 | 设置页(用量) | 各已启用 Coding Plan(含 Go)当前窗口的「每 1% 额度」与「满窗 100%」对应的 token 数与等值金额估算(采样差分/当前用量折算),附每日/每周/每月用量曲线;Plan 类调用金额只记等值,不动真金白银(issue #64) |
 | 今日会话明细 | 设置页 | 每个会话的调用次数、输入/缓存/输出 token 与费用 |
@@ -51,6 +52,7 @@
 | AI 价格同步 | [提示词](docs/AI-PRICE-SYNC-PROMPT.md) | DeepSeek 官方同步;其他 provider 使用已核对的官方价格目录与手动配置 |
 | 模型与 Plan 适配说明 | [适配文档](docs/model-and-plan-adaptation.md) | 各厂商模型计费与 8 家 Coding Plan 的适配矩阵、自动匹配机制与价格来源([English](docs/model-and-plan-adaptation.en.md)) |
 | 峰/谷切换提醒图解 | [提醒文档](docs/peak-alert.md) | 峰谷切换前弹窗与系统通知的完整图解:效果截图(中/英)、设置项说明与使用建议([English](docs/peak-alert.en.md)) |
+| 自动模型路由 | 设置页(费用设置)/ 输入区下方 | 平价时段自动把当前会话 provider 切到 DeepSeek 官方,高峰时段自动切到 OpenCode Go(两侧默认 `deepseek-v4-flash` + max 思考,逐侧可配);作用到当前正在查看的会话(下一轮请求生效),仅对当前模型为 flash 的会话生效——手动改选其它模型后不干预;dock 显示当前档位/路由 chip(点击一键关闭),检查间隔 1-60 分钟可配 |
 | Token Plan 用量统计图解 | [面板文档](docs/token-plan-stats.md) | 每 1% 与满窗估算的四列含义、首尾差分估算方法与精度标注、口径边界(只统计 dsh 内调用)与用量曲线说明([English](docs/token-plan-stats.md#english)) |
 | 多 provider 计费 | 设置页 / 账本 | 支持 OpenAI、Anthropic、Google Gemini、Mistral 等 provider 的 input/output、缓存与 reasoning token 价格,按 provider+model 隔离计费 |
 | 模型名自动匹配 | 设置页 / 账本 | 未知模型 id 自动匹配价格表:忽略大小写/空格/横杠/点号与括号附注,归一化等价或请求名包含表内模型名即命中(如 `gpt5.6 luna(go)`);路由 provider(opencode/zen 等)下跨厂商全库查找;可关闭为仅精确;未命中模型可手动指定计费条目 |

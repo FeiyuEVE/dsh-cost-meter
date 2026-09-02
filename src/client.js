@@ -1732,6 +1732,10 @@ window.__ModuleLoader__.load({
       if (typeof v !== 'string') fail('value', 'string')
       return v
     })
+    const sessionIdCodec = codecOf(v => {
+      if (typeof v !== 'string') fail('sessionId', 'string')
+      return v
+    })
 
     // ── RPC 贡献(与服务端 ./typert 清单一一对应) ───────────────────────────
 

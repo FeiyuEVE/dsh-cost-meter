@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.8] - 2026-09-02
+
+### 修复
+
+- **客户端 loader 崩溃修复**:1.7.7 引入的 `setActiveSession` RPC descriptor 引用了未定义的 `sessionIdCodec`(v1.7.1 自动模型路由开发遗留),导致浏览器侧加载插件时报 `sessionIdCodec is not defined`("Failed to load plugins");本版补上与 host typert 清单一致的 string codec 定义。
+
+
 ## [1.7.1] - unreleased(本地改造:自动模型路由)
 
 ### 新增(自动模型路由:峰谷时段自动切换正在运行的会话的 provider)

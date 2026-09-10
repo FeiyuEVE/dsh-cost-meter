@@ -4303,10 +4303,10 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
     .filter(([, spec]) => !/^[0-9A-Za-z]/.test(String(spec)) || /^[\^~><=]/.test(String(spec)))
   assert.deepEqual(offenders, [], `生产依赖必须精确锁版(不得使用 ^~/区间),违规:${offenders.map(([n, s]) => `${n}@${s}`).join(', ')}`)
   assert.equal(pkg.dependencies.zod, '4.4.3', 'zod 锁定 4.4.3')
-  // 与工作区 deepseek-harness 同版本(0.1.2-alpha.4;尚未发布到 npm,本地安装
-  // 经 pnpm-workspace.yaml 的 overrides 重定向到工作区源码目录)。
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.2-alpha.4', 'dsh-credentials 锁定工作区版本 0.1.2-alpha.4')
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.2-alpha.4', 'dsh-home-paths 锁定工作区版本 0.1.2-alpha.4')
+  // 与工作区 deepseek-harness 同版本(0.1.5-rc.2-local.1;本地安装经
+  // pnpm-workspace.yaml 的 overrides 重定向到工作区源码目录)。
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.5-rc.2-local.1', 'dsh-credentials 锁定工作区版本 0.1.5-rc.2-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.5-rc.2-local.1', 'dsh-home-paths 锁定工作区版本 0.1.5-rc.2-local.1')
   const wsYaml = readFileSync(join(import.meta.dirname, '..', 'pnpm-workspace.yaml'), 'utf8')
   assert.ok(wsYaml.includes("esbuild@0.28.1"), 'workspace 排除表包含 esbuild(本仓开发安装受年龄策略时放行)')
   assert.ok(wsYaml.includes('link:../deepseek-harness/packages/credentials/credentials'), 'workspace overrides 把 dsh-credentials 重定向到工作区源码')

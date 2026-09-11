@@ -6880,9 +6880,12 @@ window.__ModuleLoader__.load({
 
       // 输入框上方额度横条(conversation.input.dock 渲染于输入卡片上方):静态注册,
       // 组件内部按 quotaStrip.enabled 门控,无可用数据时整条隐藏。
+      // order 取 -1 排在同槽其它条目之前:该槽既有 ui-conversation 的任务卡(order 0)
+      // 与 ui-goal 的目标条(order 10)。额度横条是**状态行**,放在两张卡片上方读起来
+      // 才顺(用户反馈:Go 余额应在任务/goal 上面)。
       slots.inject('conversation.input.dock', () => {
         const dispose = slots.register(
-          { name: 'conversation.input.dock', id: 'cost-meter-qstrip', order: 5, inject: injected },
+          { name: 'conversation.input.dock', id: 'cost-meter-qstrip', order: -1, inject: injected },
           QuotaStrip,
         )
         return dispose

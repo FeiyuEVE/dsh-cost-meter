@@ -1118,6 +1118,8 @@ assert.deepEqual(CODING_PLAN_PROVIDERS.scnet.credentialEnvs, [], 'scnet 不需�
   assert.ok(clientSource.includes("enabled: v.quotaStrip?.enabled === true"), 'parseConfig 归一 quotaStrip')
   assert.ok(clientSource.includes("slots.register(\n          { name: 'conversation.input.dock', id: 'cost-meter-qstrip'") || clientSource.includes("{ name: 'conversation.input.dock', id: 'cost-meter-qstrip'"), '横条挂 conversation.input.dock(输入卡片上方)')
   assert.ok(clientSource.includes("id: 'cost-meter-qstrip-guide'"), '引导卡挂常驻 sidebar 插槽')
+  // 同槽其它条目：ui-conversation 的任务卡 order 0、ui-goal 的目标条 order 10；横条必须排在它们之前。
+  assert.ok(clientSource.includes("id: 'cost-meter-qstrip', order: -1"), '额度横条 order=-1（排在任务卡/目标条之前）')
   assert.ok(clientSource.includes('function QuotaStrip(') && clientSource.includes('function QuotaStripGuide('), '两个组件定义存在')
   assert.ok(clientSource.includes("if (config.quotaStrip?.promptSeen === true) return null"), '引导卡按 promptSeen 门控')
   assert.ok(clientSource.includes("if (strip.enabled !== true) return null"), '横条按 enabled 门控')

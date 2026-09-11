@@ -14,7 +14,7 @@
  */
 
 window.__ModuleLoader__.load({
-  id: 'dsh-cost-meter',
+  id: '@feiyueve/dsh-cost-meter',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports

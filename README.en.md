@@ -230,7 +230,7 @@ Real captures from an actual DSH sidebar of the period strip and collapsed verti
 **npm package name** (published to the npm registry, always tracks the latest version; no git needed):
 
 ```sh
-dsh plugin --profile web add dsh-cost-meter
+dsh plugin --profile web add @feiyueve/dsh-cost-meter
 ```
 
 **PowerShell one-click script** (copy the whole line, paste, press Enter; pnpm is provisioned automatically, git is auto-detected — no clone needed; the install chain is **pinned to the release tag `v1.6.12`** — review the script before running):
@@ -277,7 +277,7 @@ minimumReleaseAgeExclude:
 
 ```sh
 # update: re-run the new release's install.ps1 (the pinned tag inside it moves with the release)
-dsh plugin --profile web remove dsh-cost-meter  # uninstall
+dsh plugin --profile web remove @feiyueve/dsh-cost-meter  # uninstall
 ```
 
 ### Local development

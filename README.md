@@ -232,7 +232,7 @@
 **npm 包名安装**(已发布到 npm registry,始终跟随最新版本;无需 git):
 
 ```sh
-dsh plugin --profile web add dsh-cost-meter
+dsh plugin --profile web add @feiyueve/dsh-cost-meter
 ```
 
 **PowerShell 一键脚本**(复制整行粘贴回车;自动补齐 pnpm、自动探测 git,无需克隆仓库;安装链**固定到发布 tag `v1.6.12`**,建议先下载审阅再运行):
@@ -279,7 +279,7 @@ minimumReleaseAgeExclude:
 
 ```sh
 # 更新:发布新版后用新版 install.ps1 重跑(脚本内固定版本随之更新)
-dsh plugin --profile web remove dsh-cost-meter  # 卸载
+dsh plugin --profile web remove @feiyueve/dsh-cost-meter  # 卸载
 ```
 
 ### 开发者本地调试

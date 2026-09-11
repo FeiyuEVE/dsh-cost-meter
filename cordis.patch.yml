@@ -3,4 +3,4 @@
 # `dsh plugin --profile web add <path>` installed this package.
 - insert:
     - id: cost-meter
-      name: dsh-cost-meter
+      name: '@feiyueve/dsh-cost-meter'

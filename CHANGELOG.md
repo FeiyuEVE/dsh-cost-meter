@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.26] - 2026-09-12
+
+### 变更(dsh 依赖跟版)
+
+- **dsh 核心联动升级**:`@deepseek-ai/dsh-credentials` / `@deepseek-ai/dsh-home-paths` 精确锁版跟到工作区 deepseek-harness 的新版本 `0.1.5-rc.2-local.4`(上游基线仍是 `0.1.5-rc.2`,仅本地补丁号 +1,上游兼容面未变)。这两个包必须与宿主同版:否则 profile 里会同时出现 `local.3` 与 `local.4` 两份同名包,注入到的是两份不同的服务实例(服务身份割裂)。本版无功能变更。
+
+### 验证
+
+- `node scripts/build.mjs` 重建 `lib/client.js`(宿主 `lib/*.js` 为手工维护,不在构建范围内);`node test/verify.mjs` 全量通过,其中「生产依赖精确锁版门禁(#72 防回归)」断言 `dsh-credentials` / `dsh-home-paths` 已锁定 `0.1.5-rc.2-local.4`。
+
 ## [1.7.8] - 2026-09-02
 
 ### 修复

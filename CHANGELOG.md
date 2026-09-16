@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.29] - 2026-09-16
+
+### 变更(dsh 依赖跟版)
+
+- **dsh 核心联动升级**:`@deepseek-ai/dsh-credentials` / `@deepseek-ai/dsh-home-paths` 精确锁版从 `0.1.5-rc.2-local.5` 跟到 `0.1.6-alpha.1-local.1`。这两个包必须与宿主同版,否则 profile 里出现两份同名包、注入到两份服务实例(服务身份割裂)。
+- **跳过 1.7.28**:上游 `Han-1413141/dsh-cost-meter` 已用该号段发布(含 typert codec 工厂修复),该修复只对 0.1.6 之后的 master 必需;0.1.6-alpha.1 的 typert 契约与 0.1.5-rc.2 逐字相同,故本 fork 不用该号段,也未合并其内容。
+- `test/verify.mjs` 的锁版门禁字面量与注释同步到 `0.1.6-alpha.1-local.1`;`pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 里四个陈旧 `@deepseek-ai/dsh-*` 条目(停在 `0.1.2-alpha.1` / `0.1.0-rc.6`)一并清理到新版本。
+- 本版无功能变更:0.1.6 对 `packages/credentials/*/src` 零改动、`home-paths` 仅新增 `dshCachePath()`;`llm/stream`、`sessionProjections.register()`、client slot 契约均未变(逐条源码核实)。
+
 ## [1.7.27] - 2026-09-14
 
 ### 变更(dsh 依赖跟版)

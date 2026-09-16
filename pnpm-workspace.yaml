@@ -1,6 +1,6 @@
 allowBuilds:
   esbuild: true
-# 与工作区 deepseek-harness 同版本(0.1.2-alpha.1,尚未发布到 npm):
+# 与工作区 deepseek-harness 同版本(0.1.6-alpha.1-local.1):
 # 本地安装把这两个依赖重定向到工作区源码目录(link: 符号链接,依赖从工作区
 # 包自身的 node_modules 解析,避免 file: 拉入 workspace: 协议的传递依赖)。
 overrides:
@@ -16,11 +16,11 @@ overrides:
 minimumReleaseAgeExclude:
   - '@deepseek-ai/cordis@4.0.1'
   - '@deepseek-ai/cosmokit@1.8.2'
-  # 与工作区 deepseek-harness 同版本(0.1.2-alpha.1,尚未发布到 npm):
+  # 与工作区 deepseek-harness 同版本(0.1.6-alpha.1-local.1):
   # 本地安装经 package.json 的 pnpm.overrides 指向工作区源码目录(file: 链接)。
-  - '@deepseek-ai/dsh-home-paths@0.1.2-alpha.1'
-  - '@deepseek-ai/dsh-invariants@0.1.0-rc.6'
+  - '@deepseek-ai/dsh-home-paths@0.1.6-alpha.1-local.1'
+  - '@deepseek-ai/dsh-invariants@0.1.6-alpha.1-local.1'
   - '@deepseek-ai/schemastery@3.18.1'
-  - '@deepseek-ai/dsh-brand@0.1.0-rc.6'
-  - '@deepseek-ai/dsh-credentials@0.1.2-alpha.1'
+  - '@deepseek-ai/dsh-brand@0.1.6-alpha.1-local.1'
+  - '@deepseek-ai/dsh-credentials@0.1.6-alpha.1-local.1'
   - 'esbuild@0.28.1'

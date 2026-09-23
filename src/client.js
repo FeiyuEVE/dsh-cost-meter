@@ -1690,8 +1690,15 @@ window.__ModuleLoader__.load({
       if (v.state !== undefined && v.state !== null) out.state = parseState(v.state, path + '.state')
       return out
     }
+    /** 双世代 strict codec 契约(v1.7.31 修复):dsh 0.1.5 及更早读 `codec.schema`
+     *  (网关 `codec.schema.parse(value)`),0.1.6 起改读 `codec.create()` 工厂
+     *  (网关 `codec.create().parse(value)`)。缺 `create` 时 0.1.7 会在挂载期直接抛
+     *  「typert: <id> result strict codec has no create() factory」,整个客户端插件
+     *  加载失败(界面显示 Failed to load plugins)。两个字段同时提供才能同时装进两代
+     *  宿主,且 `create()` 返回同一个对象,保证两条取值路径解析行为完全一致。 */
     function codecOf(parse) {
-      return { parse }
+      const schema = { parse }
+      return { schema, create: () => schema }
     }
     const stateCodec = codecOf(parseState)
     const patchCodec = codecOf(v => {
@@ -1745,93 +1752,93 @@ window.__ModuleLoader__.load({
         {
           id: 'dsh-cost-meter#costMeter/getState', service: 'costMeter', namespace: 'costMeter', method: 'getState',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CostState', schema: stateCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CostState', ...stateCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/updateConfig', service: 'costMeter', namespace: 'costMeter', method: 'updateConfig',
           invocation: { kind: 'direct' },
-          parameters: [{ name: 'patch', wire: 'patch', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#ConfigPatch', schema: patchCodec } }],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CostState', schema: stateCodec },
+          parameters: [{ name: 'patch', wire: 'patch', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#ConfigPatch', ...patchCodec } }],
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CostState', ...stateCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/fetchPrices', service: 'costMeter', namespace: 'costMeter', method: 'fetchPrices',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/refreshBalance', service: 'costMeter', namespace: 'costMeter', method: 'refreshBalance',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/refreshGoQuota', service: 'costMeter', namespace: 'costMeter', method: 'refreshGoQuota',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/refreshCustomBalance', service: 'costMeter', namespace: 'costMeter', method: 'refreshCustomBalance',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/refreshCodingPlan', service: 'costMeter', namespace: 'costMeter', method: 'refreshCodingPlan',
           invocation: { kind: 'direct' },
-          parameters: [{ name: 'provider', wire: 'provider', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CodingPlanProvider', schema: providerCodec } }],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          parameters: [{ name: 'provider', wire: 'provider', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CodingPlanProvider', ...providerCodec } }],
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/resetHistory', service: 'costMeter', namespace: 'costMeter', method: 'resetHistory',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CostState', schema: stateCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CostState', ...stateCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/importLegacyHistory', service: 'costMeter', namespace: 'costMeter', method: 'importLegacyHistory',
           invocation: { kind: 'direct' }, parameters: [],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/getDaySessions', service: 'costMeter', namespace: 'costMeter', method: 'getDaySessions',
           invocation: { kind: 'direct' },
-          parameters: [{ name: 'date', wire: 'date', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#DayKey', schema: dateCodec } }],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#DayRecord', schema: dayCodec },
+          parameters: [{ name: 'date', wire: 'date', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#DayKey', ...dateCodec } }],
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#DayRecord', ...dayCodec },
         },
         {
           id: 'dsh-cost-meter#costMeter/getTopSessions', service: 'costMeter', namespace: 'costMeter', method: 'getTopSessions',
           invocation: { kind: 'direct' },
           parameters: [
-            { name: 'limit', wire: 'limit', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionLimit', schema: limitCodec } },
-            { name: 'sort', wire: 'sort', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionSort', schema: sortCodec }, acceptsUndefined: true },
-            { name: 'dir', wire: 'dir', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionSortDir', schema: sortCodec }, acceptsUndefined: true },
+            { name: 'limit', wire: 'limit', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionLimit', ...limitCodec } },
+            { name: 'sort', wire: 'sort', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionSort', ...sortCodec }, acceptsUndefined: true },
+            { name: 'dir', wire: 'dir', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionSortDir', ...sortCodec }, acceptsUndefined: true },
           ],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#TopSessions', schema: topSessionsCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#TopSessions', ...topSessionsCodec },
         },
         {
           // 写入一枚密钥到 DSH 凭据库(v1.6.8):与服务端 typert 清单一一对应。
           id: 'dsh-cost-meter#costMeter/setCredential', service: 'costMeter', namespace: 'costMeter', method: 'setCredential',
           invocation: { kind: 'direct' },
           parameters: [
-            { name: 'target', wire: 'target', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CredentialTarget', schema: credTargetCodec } },
-            { name: 'value', wire: 'value', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CredentialValue', schema: credValueCodec } },
+            { name: 'target', wire: 'target', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CredentialTarget', ...credTargetCodec } },
+            { name: 'value', wire: 'value', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CredentialValue', ...credValueCodec } },
           ],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           // 自动模型路由(v1.7):上报当前正在查看/运行的会话 id(空串 = 离开会话)。
           id: 'dsh-cost-meter#costMeter/setActiveSession', service: 'costMeter', namespace: 'costMeter', method: 'setActiveSession',
           invocation: { kind: 'direct' },
           parameters: [
-            { name: 'sessionId', wire: 'sessionId', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionId', schema: sessionIdCodec } },
+            { name: 'sessionId', wire: 'sessionId', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#SessionId', ...sessionIdCodec } },
           ],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
         {
           // 从 DSH 凭据库移除一枚密钥(v1.6.8)。
           id: 'dsh-cost-meter#costMeter/clearCredential', service: 'costMeter', namespace: 'costMeter', method: 'clearCredential',
           invocation: { kind: 'direct' },
           parameters: [
-            { name: 'target', wire: 'target', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CredentialTarget', schema: credTargetCodec } },
+            { name: 'target', wire: 'target', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-cost-meter#CredentialTarget', ...credTargetCodec } },
           ],
-          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', schema: fetchCodec },
+          result: { mode: 'strict', typeSymbol: 'dsh-cost-meter#FetchPricesResult', ...fetchCodec },
         },
       ],
     }

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.7.31] - 2026-09-23
+
+### 修复(typert strict codec 双世代契约)
+
+- **`create()` 工厂缺失导致 dsh 0.1.7 下客户端插件整体加载失败**:dsh 0.1.6 起把 strict codec 的取值路径从 `codec.schema.parse(value)` 改成 `codec.create().parse(value)`,0.1.7 的 typert 注册表/typert-loader 在注册期硬校验 `typeof codec.create === 'function'`,缺失即抛
+  `typert: <id> strict codec has no create() factory`。本插件的两处清单都只给了 `schema`,因此在 0.1.7 下客户端边 `remote.$mount(CONTRIBUTION)` 直接失败,前端显示 `Failed to load plugins`(服务端侧由 `typert-loader` 同款校验拦截)。
+- **两端同时补齐 `create()`,并保留 `schema`**:0.1.5 及更早校验 `schema` 是 zod v4 实例、decode 读 `schema.parse`;0.1.6+ 校验 `create`。两个字段并存的 codec 才是两代宿主通吃,`create()` 返回同一个实例,两条路径解析行为完全一致。
+  - 服务端 `lib/typert.host.js`:13 个 codec 统一经新 `strictCodec(typeSymbol, schema)` 构造。
+  - 客户端 `src/client.js`:`codecOf(parse)` 改为产出 `{ schema, create: () => schema }`,25 处 descriptor 由内联 `schema: xxxCodec` 改为 `...xxxCodec` 展开。
+- `test/verify.mjs` 新增门禁:服务端 15 个 invocation 的 result 与全部 parameter codec、客户端 25 处 descriptor,逐条断言 `create` 是函数、`create()` 与 `schema` 同源且可 `parse`——把这次的挂载失败固化成回归测试(同类问题还有 `dsh-energy-monitor`、`dsh-mijia-control`,已同步修复)。
+
+### 变更(dsh 依赖跟版)
+
+- 本版构建于 dsh `0.1.7-alpha.2-local.1` 之上;`1.7.30` 已完成 `@deepseek-ai/dsh-credentials` / `@deepseek-ai/dsh-home-paths` 的跟版(0.1.6-alpha.1-local.1 → 0.1.7-alpha.2-local.1,均为精确锁版),本版未再改动依赖。
+
+## [1.7.30] - 2026-09-23
+
+### 变更(dsh 依赖跟版)
+
+- **dsh 核心联动升级**:`@deepseek-ai/dsh-credentials` / `@deepseek-ai/dsh-home-paths` 精确锁版从 `0.1.6-alpha.1-local.1` 跟到 `0.1.7-alpha.2-local.1`。这两个包必须与宿主同版,否则 profile 里出现两份同名包、注入到两份服务实例(服务身份割裂)。
+- `test/verify.mjs` 的锁版门禁字面量与注释同步到 `0.1.7-alpha.2-local.1`。本版无功能变更。
+
 ## [1.7.29] - 2026-09-16
 
 ### 变更(dsh 依赖跟版)

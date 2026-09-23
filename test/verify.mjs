@@ -1393,6 +1393,32 @@ const clientSrc = readFileSync(new URL('../src/client.js', import.meta.url), 'ut
 const clientMethods = [...new Set([...clientSrc.matchAll(/id: 'dsh-cost-meter#costMeter\/([A-Za-z]+)'/g)].map(m => m[1]))].sort()
 const serverMethods = TYPERT.invocations.map(i => i.method).sort()
 assert.deepEqual(clientMethods, serverMethods, '客户端 descriptor 与服务端 typert 清单方法一一对齐')
+
+// strict codec 双世代契约(dsh 0.1.7 回归):0.1.5 读 codec.schema,0.1.6 起读 codec.create()。
+// 0.1.7 客户端挂载期由 typert 注册表校验 create,缺失即整插件加载失败(界面 Failed to load plugins);
+// 服务端由 typert-loader 同款校验。两端都必须同时给出 schema 与 create(),且 create() 行为等价。
+{
+  const everyCodec = []
+  for (const invocation of TYPERT.invocations) {
+    everyCodec.push([`${invocation.id} result`, invocation.result])
+    for (const parameter of invocation.parameters) everyCodec.push([`${invocation.id} parameter ${parameter.name}`, parameter.codec])
+  }
+  for (const [subject, codec] of everyCodec) {
+    assert.equal(codec.mode, 'strict', `${subject} 用 strict codec`)
+    assert.equal(typeof codec.create, 'function', `${subject} 提供 create() 工厂(0.1.6+)`)
+    const created = codec.create()
+    assert.equal(typeof codec.schema.parse, 'function', `${subject} 保留 schema(0.1.5)`)
+    assert.equal(created, codec.schema, `${subject} create() 返回同一个 schema 实例`)
+    assert.equal(typeof created.parse, 'function', `${subject} create() 产物可 parse`)
+  }
+  // 客户端 descriptor 走同一份 codecOf():既不能再写死 `schema: xxxCodec`(会丢 create),
+  // 也要确认每个 codec 字面量都展开自带 create 的 codecOf 结果。
+  assert.ok(!/schema: [a-zA-Z]+Codec/.test(clientSrc), '客户端 descriptor 不再内联 schema(改用 ...codec 展开)')
+  const spread = [...clientSrc.matchAll(/\.\.\.([a-zA-Z]+Codec) \}/g)].map(m => m[1])
+  assert.equal(spread.length, everyCodec.length, `客户端 descriptor 全部经 ...codec 展开(${everyCodec.length} 处 = 服务端 codec 数)`)
+  assert.ok(clientSrc.includes('return { schema, create: () => schema }'), 'codecOf 同时产出 schema 与 create')
+  console.log(`[ok] strict codec 双世代契约:服务端/客户端 ${everyCodec.length} 处均带 create() 且与 schema 同源`)
+}
 console.log('[ok] coding plan adapter/解析器/软失败/配置清洗/清单断言通过')
 
 // 网络重试封装(issue #28):仅瞬时网络错误重试,每次尝试新建超时信号。
@@ -4305,10 +4331,10 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
     .filter(([, spec]) => !/^[0-9A-Za-z]/.test(String(spec)) || /^[\^~><=]/.test(String(spec)))
   assert.deepEqual(offenders, [], `生产依赖必须精确锁版(不得使用 ^~/区间),违规:${offenders.map(([n, s]) => `${n}@${s}`).join(', ')}`)
   assert.equal(pkg.dependencies.zod, '4.4.3', 'zod 锁定 4.4.3')
-  // 与工作区 deepseek-harness 同版本(0.1.6-alpha.1-local.1;本地安装经
+  // 与工作区 deepseek-harness 同版本(0.1.7-alpha.2-local.1;本地安装经
   // pnpm-workspace.yaml 的 overrides 重定向到工作区源码目录)。
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.6-alpha.1-local.1', 'dsh-credentials 锁定工作区版本 0.1.6-alpha.1-local.1')
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.6-alpha.1-local.1', 'dsh-home-paths 锁定工作区版本 0.1.6-alpha.1-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.7-alpha.2-local.1', 'dsh-credentials 锁定工作区版本 0.1.7-alpha.2-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.7-alpha.2-local.1', 'dsh-home-paths 锁定工作区版本 0.1.7-alpha.2-local.1')
   const wsYaml = readFileSync(join(import.meta.dirname, '..', 'pnpm-workspace.yaml'), 'utf8')
   assert.ok(wsYaml.includes("esbuild@0.28.1"), 'workspace 排除表包含 esbuild(本仓开发安装受年龄策略时放行)')
   assert.ok(wsYaml.includes('link:../deepseek-harness/packages/credentials/credentials'), 'workspace overrides 把 dsh-credentials 重定向到工作区源码')

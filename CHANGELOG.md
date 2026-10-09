@@ -1,5 +1,14 @@
 # Changelog
 
+
+## [1.7.32] - 2026-10-09
+
+### 兼容 dsh 0.2.1-alpha.1-local.1
+
+- 两个精确依赖 `@deepseek-ai/dsh-credentials` / `@deepseek-ai/dsh-home-paths` 跟版 `0.1.7-alpha.2-local.1 → 0.2.1-alpha.1-local.1`（必须与宿主同版，否则 profile 里注入两份服务实例）。
+- 删除已不存在的 `@deepseek-ai/dsh-invariants` 死引用（devDependencies + workspace override）：上游 0.2.0-rc.2 移除了运行时不变式注册表（`packages/runtime-diagnostics/` 已空）。
+- `test/verify.mjs` 新增两条回归门禁：依赖里不得再出现 `dsh-invariants`、overrides 不得再 link `runtime-diagnostics/invariants`。
+- 验证：`npm test` 退出 0（含精确锁版门禁与实际 import 新核心包的集成用例）、`npm run build` 退出 0 且 `lib/client.js` 零漂移（261200 B，限 262144）。
 ## [1.7.31] - 2026-09-23
 
 ### 修复(typert strict codec 双世代契约)

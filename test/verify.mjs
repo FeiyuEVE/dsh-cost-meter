@@ -4331,12 +4331,17 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
     .filter(([, spec]) => !/^[0-9A-Za-z]/.test(String(spec)) || /^[\^~><=]/.test(String(spec)))
   assert.deepEqual(offenders, [], `生产依赖必须精确锁版(不得使用 ^~/区间),违规:${offenders.map(([n, s]) => `${n}@${s}`).join(', ')}`)
   assert.equal(pkg.dependencies.zod, '4.4.3', 'zod 锁定 4.4.3')
-  // 与工作区 deepseek-harness 同版本(0.1.7-alpha.2-local.1;本地安装经
+  // 与工作区 deepseek-harness 同版本(0.2.1-alpha.1-local.1;本地安装经
   // pnpm-workspace.yaml 的 overrides 重定向到工作区源码目录)。
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.1.7-alpha.2-local.1', 'dsh-credentials 锁定工作区版本 0.1.7-alpha.2-local.1')
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.1.7-alpha.2-local.1', 'dsh-home-paths 锁定工作区版本 0.1.7-alpha.2-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.2.1-alpha.1-local.1', 'dsh-credentials 锁定工作区版本 0.2.1-alpha.1-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.2.1-alpha.1-local.1', 'dsh-home-paths 锁定工作区版本 0.2.1-alpha.1-local.1')
+  // 0.2.0-rc.2 起上游移除 @deepseek-ai/dsh-invariants:本仓不得再引用(否则 pnpm
+  // 会对着不存在的目录建悬挂链接,见 docs/upgrade-guide/v0.2.0-rc.2)。
+  assert.ok(!('@deepseek-ai/dsh-invariants' in (pkg.devDependencies ?? {})), 'devDependencies 不再引用已被上游移除的 dsh-invariants')
+  assert.ok(!('@deepseek-ai/dsh-invariants' in (pkg.dependencies ?? {})), 'dependencies 不再引用已被上游移除的 dsh-invariants')
   const wsYaml = readFileSync(join(import.meta.dirname, '..', 'pnpm-workspace.yaml'), 'utf8')
   assert.ok(wsYaml.includes("esbuild@0.28.1"), 'workspace 排除表包含 esbuild(本仓开发安装受年龄策略时放行)')
+  assert.ok(!wsYaml.includes('runtime-diagnostics/invariants'), 'workspace overrides 不再 link 已移除的 dsh-invariants')
   assert.ok(wsYaml.includes('link:../deepseek-harness/packages/credentials/credentials'), 'workspace overrides 把 dsh-credentials 重定向到工作区源码')
   assert.ok(wsYaml.includes('link:../deepseek-harness/packages/util/home-paths'), 'workspace overrides 把 dsh-home-paths 重定向到工作区源码')
   console.log('[ok] 生产依赖精确锁版门禁(#72 防回归)通过')

@@ -8,7 +8,6 @@ overrides:
   '@deepseek-ai/dsh-credentials': link:../deepseek-harness/packages/credentials/credentials
   '@deepseek-ai/dsh-home-paths': link:../deepseek-harness/packages/util/home-paths
   '@deepseek-ai/dsh-brand': link:../deepseek-harness/packages/util/brand
-  '@deepseek-ai/dsh-invariants': link:../deepseek-harness/packages/runtime-diagnostics/invariants
 
 importers:
 
@@ -30,9 +29,6 @@ importers:
       '@deepseek-ai/dsh-brand':
         specifier: link:../deepseek-harness/packages/util/brand
         version: link:../deepseek-harness/packages/util/brand
-      '@deepseek-ai/dsh-invariants':
-        specifier: link:../deepseek-harness/packages/runtime-diagnostics/invariants
-        version: link:../deepseek-harness/packages/runtime-diagnostics/invariants
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1

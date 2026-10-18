@@ -4331,10 +4331,10 @@ console.log('[ok] OpenRouter/SiliconFlow/CommandCode 解析器与白名单通过
     .filter(([, spec]) => !/^[0-9A-Za-z]/.test(String(spec)) || /^[\^~><=]/.test(String(spec)))
   assert.deepEqual(offenders, [], `生产依赖必须精确锁版(不得使用 ^~/区间),违规:${offenders.map(([n, s]) => `${n}@${s}`).join(', ')}`)
   assert.equal(pkg.dependencies.zod, '4.4.3', 'zod 锁定 4.4.3')
-  // 与工作区 deepseek-harness 同版本(0.2.1-alpha.1-local.1;本地安装经
+  // 与工作区 deepseek-harness 同版本(0.2.1-rc.2-local.1;本地安装经
   // pnpm-workspace.yaml 的 overrides 重定向到工作区源码目录)。
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.2.1-alpha.1-local.1', 'dsh-credentials 锁定工作区版本 0.2.1-alpha.1-local.1')
-  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.2.1-alpha.1-local.1', 'dsh-home-paths 锁定工作区版本 0.2.1-alpha.1-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-credentials'], '0.2.1-rc.2-local.1', 'dsh-credentials 锁定工作区版本 0.2.1-rc.2-local.1')
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-home-paths'], '0.2.1-rc.2-local.1', 'dsh-home-paths 锁定工作区版本 0.2.1-rc.2-local.1')
   // 0.2.0-rc.2 起上游移除 @deepseek-ai/dsh-invariants:本仓不得再引用(否则 pnpm
   // 会对着不存在的目录建悬挂链接,见 docs/upgrade-guide/v0.2.0-rc.2)。
   assert.ok(!('@deepseek-ai/dsh-invariants' in (pkg.devDependencies ?? {})), 'devDependencies 不再引用已被上游移除的 dsh-invariants')
